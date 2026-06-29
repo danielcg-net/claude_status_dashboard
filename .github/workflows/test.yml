@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
 
 concurrency:
   group: test-${{ github.ref }}
@@ -36,7 +38,16 @@ jobs:
         run: npm run typecheck
 
       - name: Unit tests
-        run: npm test
+        run: npx vitest run --reporter=verbose --reporter=json --outputFile=test-results.json
+
+      - name: Publish test results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Vitest results
+          path: test-results.json
+          reporter: vitest
+          fail-on-error: false
 
       - name: Build
         run: npm run build
