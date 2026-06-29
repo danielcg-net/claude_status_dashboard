@@ -87,6 +87,24 @@ Status mapping:
 - `Notification`: `red`
 - `Stop`, `SubagentStop`: `green`
 
+## Claude Code Plugin
+
+A Claude Code plugin package lives in [claude-code-plugin/claude-status-dashboard](claude-code-plugin/claude-status-dashboard/README.md). It bundles the same hook behavior with a `.claude-plugin/plugin.json` manifest and plugin `hooks/hooks.json`.
+
+Local install:
+
+```bash
+claude plugin marketplace add /Users/ddecarvalhogomes/Private/claude_status_dashboard/claude-code-plugin --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
+Publish install after this repo exists on GitHub:
+
+```bash
+claude plugin marketplace add danielcg-net/claude-status-dashboard --sparse claude-code-plugin --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
 ## Red Alert Beeps
 
 The browser can emit a quiet beep when any card remains `red` longer than `RED_ALERT_AFTER_MS`.
