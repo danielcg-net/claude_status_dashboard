@@ -92,8 +92,10 @@ if (!root) {
 const loadExcludedRepos = (): ReadonlySet<string> => {
   try {
     const raw = localStorage.getItem('excludedRepos')
-    if (!raw) return new Set<string>()
-    return new Set<string>(JSON.parse(raw) as string[])
+    if (raw === null) return new Set<string>()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set<string>()
+    return new Set<string>(parsed.filter((item): item is string => typeof item === 'string'))
   } catch (error) {
     console.warn('Could not load excluded repos from localStorage:', error)
     return new Set<string>()
@@ -373,7 +375,9 @@ const findUsageProject = (session: Session, usage: UsageSummary | null): UsagePr
     return null
   }
 
-  const projects = Object.values(usage.projects).filter((p) => !state.excludedRepos.has(p.project))
+  const projects = state.excludedRepos.size === 0
+    ? Object.values(usage.projects)
+    : Object.values(usage.projects).filter((p) => !state.excludedRepos.has(p.project))
   const candidates = new Set(projectCandidatesFor(session))
 
   return (
@@ -524,9 +528,12 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       usageMetric(`Tokens · ${costWindowLabels[state.costWindow]}`, formatNumber(windowTotals.totalTokens)),
       usageMetric(
         'Matched repos',
-        state.excludedRepos.size > 0
-          ? `${formatNumber(Object.keys(usage.projects).length - state.excludedRepos.size)}/${formatNumber(Object.keys(usage.projects).length)}`
-          : formatNumber(Object.keys(usage.projects).length),
+        (() => {
+          const total = Object.keys(usage.projects).length
+          if (state.excludedRepos.size === 0) return formatNumber(total)
+          const activeExclusions = [...state.excludedRepos].filter((k) => k in usage.projects).length
+          return `${formatNumber(total - activeExclusions)}/${formatNumber(total)}`
+        })(),
       ),
       usageMetric('Active block', activeBlock ? formatMoney(activeBlock.totalCost) : 'None'),
     ]),
@@ -684,11 +691,14 @@ const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => 
   if (state.excludedRepos.size === 0) return null
 
   const tags = [...state.excludedRepos]
+    .filter((key) => key in usage.projects)
     .map((key) => ({
       key,
-      display: usage.projects[key] ? shortProjectName(key) : key,
+      display: shortProjectName(key),
     }))
     .sort((a, b) => a.display.localeCompare(b.display))
+
+  if (tags.length === 0) return null
 
   return createElement('details', { class: 'excluded-details' }, [
     createElement('summary', { class: 'excluded-details__summary' }, [
@@ -724,7 +734,7 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 
   const projects = allProjects.filter((p) => !state.excludedRepos.has(p.project))
 
-  if (projects.length === 0 && state.excludedRepos.size === 0) {
+  if (allProjects.length === 0) {
     return createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('p', {}, ['No repo usage data available for the selected window.']),
@@ -741,15 +751,17 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
     }
   }
 
+  const activeExclusions = [...state.excludedRepos].filter((k) => k in usage.projects).length
+
   return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
     createElement('div', { class: 'repo-explorer__header' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('span', { class: 'repo-explorer__count' }, [
-        `${projects.length} repo${projects.length === 1 ? '' : 's'}${state.excludedRepos.size > 0 ? ` (${state.excludedRepos.size} excluded)` : ''}`,
+        `${projects.length} repo${projects.length === 1 ? '' : 's'}${activeExclusions > 0 ? ` (${activeExclusions} excluded)` : ''}`,
       ]),
     ]),
     projects.length === 0
-      ? createElement('p', { class: 'repo-explorer__all-excluded' }, ['All repos are excluded. Click ✕ on an excluded tag above to include it again.'])
+      ? createElement('p', { class: 'repo-explorer__all-excluded' }, ['All repos with usage data in this window are excluded. Include some from the ccusage card above to see them.'])
       : createElement('div', { class: 'repo-explorer__grid' }, projects.map(renderRepoCard)),
   ])
 }
