@@ -789,15 +789,13 @@ const render = (): void => {
             createElement('span', {}, [statusLabels[status]]),
             createElement('strong', {}, [String(state.sessions.filter((session) => {
               if (session.status !== status) return false
-              // Hide excluded repos
-              if (state.excludedRepos.size > 0) {
-                const project = findUsageProject(session, state.usage)
-                if (project && state.excludedRepos.has(project.project)) return false
-              }
+              const project = findUsageProject(session, state.usage)
+              // Hide sessions matching excluded repos
+              if (project && state.excludedRepos.has(project.project)) return false
               // When a repo is selected, only count sessions for that repo
-              if (state.selectedRepo) {
-                const project = findUsageProject(session, state.usage)
-                return project?.project === state.selectedRepo
+              // (sessions with no project match are always shown)
+              if (state.selectedRepo && project) {
+                return project.project === state.selectedRepo
               }
               return true
             }).length)]),
@@ -811,15 +809,13 @@ const render = (): void => {
           ])
         : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
             .filter((session) => {
+              const project = findUsageProject(session, state.usage)
               // Hide sessions matching excluded repos
-              if (state.excludedRepos.size > 0) {
-                const project = findUsageProject(session, state.usage)
-                if (project && state.excludedRepos.has(project.project)) return false
-              }
+              if (project && state.excludedRepos.has(project.project)) return false
               // When a repo is selected, only show sessions for that repo
-              if (state.selectedRepo) {
-                const project = findUsageProject(session, state.usage)
-                return project?.project === state.selectedRepo
+              // (sessions with no project match are always shown)
+              if (state.selectedRepo && project) {
+                return project.project === state.selectedRepo
               }
               return true
             })
