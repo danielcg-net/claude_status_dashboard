@@ -79,6 +79,22 @@ Start the dashboard before using Claude Code:
 docker compose up --build
 ```
 
+## Updating
+
+After pulling new changes from the repository, the plugin cache still has the old hook script. Update it by reinstalling:
+
+```bash
+claude plugin uninstall claude-status-dashboard --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
+Or copy the updated script directly:
+
+```bash
+cp claude-code-plugin/claude-status-dashboard/scripts/claude-status-dashboard-hook.sh \
+  ~/.claude/plugins/cache/claude-status-dashboard/claude-status-dashboard/0.1.0/scripts/claude-status-dashboard-hook.sh
+```
+
 ## Publish
 
 After publishing this repository, users can add the GitHub repo as a marketplace. Because this repo stores the marketplace under `claude-code-plugin`, use sparse checkout:
