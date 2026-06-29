@@ -46,7 +46,7 @@ jobs:
         with:
           name: Vitest results
           path: test-results.json
-          reporter: vitest
+          reporter: mocha-json
           fail-on-error: false
 
       - name: Build
