@@ -370,13 +370,26 @@ const projectCandidatesFor = (session: Session): readonly string[] =>
     .filter((value): value is string => Boolean(value))
     .flatMap((value) => [value, normalizeProjectKey(value)])
 
+const findUsageProjectUnfiltered = (session: Session, usage: UsageSummary): UsageProject | null => {
+  const projects = Object.values(usage.projects)
+  const candidates = new Set(projectCandidatesFor(session))
+
+  return (
+    projects.find((project) => candidates.has(project.project) || candidates.has(normalizeProjectKey(project.project))) ??
+    projects.find((project) =>
+      [...candidates].some((candidate) => normalizeProjectKey(project.project).endsWith(candidate)),
+    ) ??
+    null
+  )
+}
+
 const isSessionExcluded = (session: Session): boolean => {
-  // Check if the session's matched project is in the excluded set
+  // Use unfiltered project lookup so excluded repos are still findable
   if (state.usage?.available) {
-    const project = findUsageProject(session, state.usage)
+    const project = findUsageProjectUnfiltered(session, state.usage)
     if (project && state.excludedRepos.has(project.project)) return true
   }
-  // Check if the session's usageProject (short name or full key) matches
+  // Fallback: match session.usageProject against excluded keys
   if (!session.usageProject) return false
   for (const key of state.excludedRepos) {
     if (key === session.usageProject) return true
@@ -563,7 +576,7 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
           : 'No active usage block reported',
       ]),
     ]),
-    renderExcludedReposSection(usage) ?? createElement('div', { style: 'display:none' }),
+    ...(() => { const s = renderExcludedReposSection(usage); return s ? [s] : [] })(),
   ])
 }
 
@@ -871,7 +884,11 @@ const render = (): void => {
       const next = new Set(state.excludedRepos)
       next.add(repo)
       saveExcludedRepos(next)
-      state = { ...state, excludedRepos: next, selectedRepo: null }
+      state = {
+        ...state,
+        excludedRepos: next,
+        selectedRepo: state.selectedRepo === repo ? null : state.selectedRepo,
+      }
       render()
     })
   })
