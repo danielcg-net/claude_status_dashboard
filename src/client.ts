@@ -362,21 +362,18 @@ const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
 const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/
 
 const formatDayLabel = (date: string): string => {
-  // date is "YYYY-MM-DD" from ccusage. Parse parts to avoid UTC-to-local date shifts
-  // (e.g. "2026-06-28" as UTC midnight becomes June 27 in negative-offset timezones).
+  // date is "YYYY-MM-DD" from ccusage. Append T00:00:00Z and use timeZone:'UTC'
+  // to avoid UTC-to-local date shifts (e.g. "2026-06-28" as UTC midnight becomes
+  // June 27 in negative-offset timezones).
   if (!dateStringRegex.test(date)) {
     console.warn('formatDayLabel: unexpected date format', date)
     return date
   }
-  const parts = date.split('-')
-  const year = Number(parts[0])
-  const month = Number(parts[1])
-  const day = Number(parts[2])
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     timeZone: 'UTC',
-  }).format(new Date(Date.UTC(year, month - 1, day)))
+  }).format(new Date(date + 'T00:00:00Z'))
 }
 
 const normalizeProjectKey = (value: string): string =>
