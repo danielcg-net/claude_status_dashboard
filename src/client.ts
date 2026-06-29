@@ -66,6 +66,7 @@ type AppState = ApiState & {
   readonly usage: UsageSummary | null
   readonly costWindow: CostWindow
   readonly selectedRepo: string | null
+  readonly excludedRepos: ReadonlySet<string>
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -88,6 +89,24 @@ if (!root) {
   throw new Error('Missing #app root element.')
 }
 
+const loadExcludedRepos = (): ReadonlySet<string> => {
+  try {
+    const raw = localStorage.getItem('excludedRepos')
+    if (!raw) return new Set()
+    return new Set(JSON.parse(raw) as string[])
+  } catch {
+    return new Set()
+  }
+}
+
+const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
+  try {
+    localStorage.setItem('excludedRepos', JSON.stringify([...excluded]))
+  } catch {
+    // localStorage may be full or unavailable
+  }
+}
+
 const initialState: AppState = {
   sessions: [],
   redAlertAfterMs: 300_000,
@@ -96,6 +115,7 @@ const initialState: AppState = {
   usage: null,
   costWindow: 'today',
   selectedRepo: null,
+  excludedRepos: loadExcludedRepos(),
 }
 
 const costWindowLabels: Record<CostWindow, string> = {
@@ -526,6 +546,12 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
     createElement('div', { class: 'repo-card__header' }, [
       createElement('h3', { class: 'repo-card__name', title: projectKeyToPath(project.project) }, [shortProjectName(project.project)]),
       createElement('span', { class: 'repo-card__cost' }, [formatMoney(totals.totalCost)]),
+      createElement('button', {
+        class: 'repo-card__exclude',
+        type: 'button',
+        'data-exclude-repo': project.project,
+        title: 'Exclude this repo from the dashboard',
+      }, ['✕']),
     ]),
     createElement('div', { class: 'repo-card__metrics' }, [
       createElement('div', {}, [
@@ -641,8 +667,33 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
   ])
 }
 
+const renderExcludedReposBar = (usage: UsageSummary): HTMLElement | null => {
+  if (state.excludedRepos.size === 0) return null
+
+  const excludedList = [...state.excludedRepos]
+    .map((key) => {
+      const project = usage.projects[key]
+      return project ? shortProjectName(key) : key
+    })
+    .sort()
+
+  return createElement('div', { class: 'excluded-bar' }, [
+    createElement('span', { class: 'excluded-bar__label' }, [`Excluded (${excludedList.length}):`]),
+    ...excludedList.map((name) =>
+      createElement('span', { class: 'excluded-bar__tag' }, [
+        createElement('span', {}, [name]),
+        createElement('button', {
+          type: 'button',
+          'data-unexclude-repo': name,
+          title: 'Include this repo again',
+        }, ['✕']),
+      ]),
+    ),
+  ])
+}
+
 const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
-  const projects = Object.values(usage.projects)
+  const allProjects = Object.values(usage.projects)
     .filter((project) => {
       const windowDays = daysForWindow(project.days, state.costWindow)
       return windowDays.some((day) => day.totalCost > 0 || day.totalTokens > 0)
@@ -653,7 +704,9 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
       return rightTotals.totalCost - leftTotals.totalCost
     })
 
-  if (projects.length === 0) {
+  const projects = allProjects.filter((p) => !state.excludedRepos.has(p.project))
+
+  if (projects.length === 0 && state.excludedRepos.size === 0) {
     return createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('p', {}, ['No repo usage data available for the selected window.']),
@@ -670,14 +723,18 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
     }
   }
 
+  const excludedBar = renderExcludedReposBar(usage)
   return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
+    ...(excludedBar ? [excludedBar] : []),
     createElement('div', { class: 'repo-explorer__header' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('span', { class: 'repo-explorer__count' }, [
-        `${projects.length} repo${projects.length === 1 ? '' : 's'}`,
+        `${projects.length} repo${projects.length === 1 ? '' : 's'}${state.excludedRepos.size > 0 ? ` (${state.excludedRepos.size} excluded)` : ''}`,
       ]),
     ]),
-    createElement('div', { class: 'repo-explorer__grid' }, projects.map(renderRepoCard)),
+    projects.length === 0
+      ? createElement('p', { class: 'repo-explorer__all-excluded' }, ['All repos are excluded. Click ✕ on an excluded tag above to include it again.'])
+      : createElement('div', { class: 'repo-explorer__grid' }, projects.map(renderRepoCard)),
   ])
 }
 
@@ -737,6 +794,36 @@ const render = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-repo-back]').forEach((button) => {
     button.addEventListener('click', () => {
       state = { ...state, selectedRepo: null }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-exclude-repo]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const repo = button.dataset.excludeRepo
+      if (!repo) return
+      const next = new Set(state.excludedRepos)
+      next.add(repo)
+      saveExcludedRepos(next)
+      state = { ...state, excludedRepos: next, selectedRepo: null }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-unexclude-repo]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const name = button.dataset.unexcludeRepo
+      if (!name) return
+      // Find the full project key by matching short name
+      const fullKey = [...state.excludedRepos].find(
+        (key) => shortProjectName(key) === name || key === name,
+      )
+      if (!fullKey) return
+      const next = new Set(state.excludedRepos)
+      next.delete(fullKey)
+      saveExcludedRepos(next)
+      state = { ...state, excludedRepos: next }
       render()
     })
   })

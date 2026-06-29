@@ -601,6 +601,92 @@ h1 {
   font-size: 0.8rem;
 }
 
+.repo-card__exclude {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.repo-card:hover .repo-card__exclude {
+  opacity: 1;
+}
+
+.repo-card__exclude:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* ── Excluded repos bar ─────────────────────────────── */
+
+.excluded-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.excluded-bar__label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-right: 4px;
+}
+
+.excluded-bar__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  padding: 3px 8px;
+  font-size: 0.8rem;
+}
+
+.excluded-bar__tag button {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.excluded-bar__tag button:hover {
+  background: var(--red);
+  color: var(--text);
+}
+
+.repo-explorer__all-excluded {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* ── Repo detail view ───────────────────────────────── */
 
 .repo-detail__header {
