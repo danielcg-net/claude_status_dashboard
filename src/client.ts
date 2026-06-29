@@ -370,6 +370,22 @@ const projectCandidatesFor = (session: Session): readonly string[] =>
     .filter((value): value is string => Boolean(value))
     .flatMap((value) => [value, normalizeProjectKey(value)])
 
+const isSessionExcluded = (session: Session): boolean => {
+  // Check if the session's matched project is in the excluded set
+  if (state.usage?.available) {
+    const project = findUsageProject(session, state.usage)
+    if (project && state.excludedRepos.has(project.project)) return true
+  }
+  // Check if the session's usageProject (short name or full key) matches
+  if (!session.usageProject) return false
+  for (const key of state.excludedRepos) {
+    if (key === session.usageProject) return true
+    if (key.endsWith(`-${session.usageProject}`)) return true
+    if (shortProjectName(key) === session.usageProject) return true
+  }
+  return false
+}
+
 const findUsageProject = (session: Session, usage: UsageSummary | null): UsageProject | null => {
   if (!usage?.available) {
     return null
@@ -790,12 +806,11 @@ const render = (): void => {
             createElement('strong', {}, [String(state.sessions.filter((session) => {
               if (session.status !== status) return false
               // Hide sessions whose usageProject or matched project is excluded
-              const project = findUsageProject(session, state.usage)
-              if (project && state.excludedRepos.has(project.project)) return false
-              if (!project && session.usageProject && [...state.excludedRepos].some((k) => shortProjectName(k) === session.usageProject)) return false
+              if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
               // When a repo is selected, only count sessions for that repo
-              if (state.selectedRepo && project) {
-                return project.project === state.selectedRepo
+              if (state.selectedRepo) {
+                const project = findUsageProject(session, state.usage)
+                return project?.project === state.selectedRepo
               }
               return true
             }).length)]),
@@ -810,12 +825,11 @@ const render = (): void => {
         : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
             .filter((session) => {
               // Hide sessions whose usageProject or matched project is excluded
-              const project = findUsageProject(session, state.usage)
-              if (project && state.excludedRepos.has(project.project)) return false
-              if (!project && session.usageProject && [...state.excludedRepos].some((k) => shortProjectName(k) === session.usageProject)) return false
+              if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
               // When a repo is selected, only show sessions for that repo
-              if (state.selectedRepo && project) {
-                return project.project === state.selectedRepo
+              if (state.selectedRepo) {
+                const project = findUsageProject(session, state.usage)
+                return project?.project === state.selectedRepo
               }
               return true
             })
