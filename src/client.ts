@@ -92,11 +92,11 @@ if (!root) {
 const loadExcludedRepos = (): ReadonlySet<string> => {
   try {
     const raw = localStorage.getItem('excludedRepos')
-    if (!raw) return new Set()
-    return new Set(JSON.parse(raw) as string[])
+    if (!raw) return new Set<string>()
+    return new Set<string>(JSON.parse(raw) as string[])
   } catch (error) {
     console.warn('Could not load excluded repos from localStorage:', error)
-    return new Set()
+    return new Set<string>()
   }
 }
 
@@ -682,30 +682,26 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
 const renderExcludedReposBar = (usage: UsageSummary): HTMLElement | null => {
   if (state.excludedRepos.size === 0) return null
 
-  const excludedList = [...state.excludedRepos]
-    .map((key) => {
-      const project = usage.projects[key]
-      return project ? shortProjectName(key) : key
-    })
-    .sort()
+  const tags = [...state.excludedRepos]
+    .map((key) => ({
+      key,
+      display: usage.projects[key] ? shortProjectName(key) : key,
+    }))
+    .sort((a, b) => a.display.localeCompare(b.display))
 
   return createElement('div', { class: 'excluded-bar' }, [
-    createElement('span', { class: 'excluded-bar__label' }, [`Excluded (${excludedList.length}):`]),
-    ...excludedList.map((name) => {
-      // Find the full project key for this short name
-      const fullKey = [...state.excludedRepos].find(
-        (key) => shortProjectName(key) === name || key === name,
-      ) ?? name
-      return createElement('span', { class: 'excluded-bar__tag' }, [
-        createElement('span', {}, [name]),
+    createElement('span', { class: 'excluded-bar__label' }, [`Excluded (${tags.length}):`]),
+    ...tags.map(({ key, display }) =>
+      createElement('span', { class: 'excluded-bar__tag' }, [
+        createElement('span', {}, [display]),
         createElement('button', {
           type: 'button',
-          'data-unexclude-repo': fullKey,
-          'aria-label': `Include ${name} again`,
-          title: `Include ${name} again`,
+          'data-unexclude-repo': key,
+          'aria-label': `Include ${display} again`,
+          title: `Include ${display} again`,
         }, ['✕']),
-      ])
-    }),
+      ]),
+    ),
   ])
 }
 
@@ -776,7 +772,11 @@ const render = (): void => {
         ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
           createElement('div', { class: `summary__item summary__item--${status}` }, [
             createElement('span', {}, [statusLabels[status]]),
-            createElement('strong', {}, [String(state.sessions.filter((session) => session.status === status).length)]),
+            createElement('strong', {}, [String(state.sessions.filter((session) => {
+              if (state.excludedRepos.size === 0) return session.status === status
+              const project = findUsageProject(session, state.usage)
+              return session.status === status && (!project || !state.excludedRepos.has(project.project))
+            }).length)]),
           ]),
         ),
       ]),
@@ -785,7 +785,13 @@ const render = (): void => {
             createElement('h2', {}, ['No sessions registered']),
             createElement('p', {}, ['Send a POST request to /api/sessions to add the first Claude Code session.']),
           ])
-        : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions.map(renderSession)),
+        : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
+            .filter((session) => {
+              if (state.excludedRepos.size === 0) return true
+              const project = findUsageProject(session, state.usage)
+              return !project || !state.excludedRepos.has(project.project)
+            })
+            .map(renderSession)),
     ]),
   )
 
