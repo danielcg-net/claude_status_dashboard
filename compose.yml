@@ -1,0 +1,11 @@
+services:
+  dashboard:
+    build: .
+    container_name: claude-status-dashboard
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      HOST: "0.0.0.0"
+      RED_ALERT_AFTER_MS: "300000"
+    restart: unless-stopped

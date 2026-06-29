@@ -1,0 +1,97 @@
+# Claude Status Dashboard
+
+Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks can register sessions and push status changes to the API exposed by the Docker container.
+
+## Statuses
+
+- `green`: Claude has finished running something.
+- `orange`: Claude is thinking and doing stuff.
+- `red`: Claude is paused waiting for an approval or decision.
+
+## Run With Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:8787](http://localhost:8787).
+
+The app stores session state in memory. Restarting the container clears the dashboard.
+
+## API
+
+Register or update a session:
+
+```bash
+curl -X POST http://localhost:8787/api/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"repo-main","name":"BizYeet main worktree","status":"orange","detail":"Claude is running tests"}'
+```
+
+Set a session status:
+
+```bash
+curl -X PATCH http://localhost:8787/api/sessions/repo-main \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"red","detail":"Waiting for tool approval"}'
+```
+
+List sessions:
+
+```bash
+curl http://localhost:8787/api/sessions
+```
+
+Delete a session:
+
+```bash
+curl -X DELETE http://localhost:8787/api/sessions/repo-main
+```
+
+## Claude Code Hook Shape
+
+Use whatever Claude Code hook events you prefer, then call the local API with `curl`.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION_ID="${CLAUDE_PROJECT_DIR:-default}"
+SESSION_NAME="$(basename "$SESSION_ID")"
+
+curl -fsS -X POST http://localhost:8787/api/sessions \
+  -H 'Content-Type: application/json' \
+  -d "{\"id\":\"$SESSION_ID\",\"name\":\"$SESSION_NAME\",\"status\":\"orange\",\"detail\":\"Claude is working\"}" >/dev/null
+```
+
+Examples:
+
+- Work started hook: `POST /api/sessions` with `status: "orange"`.
+- Work finished hook: `PATCH /api/sessions/:id` with `status: "green"`.
+- Approval required hook: `PATCH /api/sessions/:id` with `status: "red"`.
+
+## Red Alert Beeps
+
+The browser can emit a quiet beep when any card remains `red` longer than `RED_ALERT_AFTER_MS`.
+
+Browsers require a user gesture before audio can play, so click `Enable beeps` after opening the page.
+
+Configure the threshold in `compose.yml`:
+
+```yaml
+environment:
+  RED_ALERT_AFTER_MS: "300000"
+```
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+Then open [http://localhost:8787](http://localhost:8787).
+
+## Publish Target
+
+This directory is initialized as a git repository and is ready to push to a public `danielcg-net` repository.
