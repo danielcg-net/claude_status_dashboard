@@ -41,7 +41,7 @@ export CLAUDE_STATUS_CURL_TIMEOUT="2"
 export CLAUDE_STATUS_USAGE_PROJECT="my-project"
 ```
 
-Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook derives `usageProject` from the last directory of the hook `cwd` (e.g., `bizyeet` from `/Users/you/Private/Projects/bizyeet`). The dashboard's fuzzy matcher will find the matching ccusage project.
+Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook derives `usageProject` from the last directory of the hook `cwd` (e.g., `my-project` from `/Users/you/Projects/my-project`). The dashboard's fuzzy matcher will find the matching ccusage project.
 
 ## Local Validation
 
