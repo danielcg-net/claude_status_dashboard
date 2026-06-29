@@ -44,7 +44,7 @@ Register or update a session:
 ```bash
 curl -X POST http://localhost:8787/api/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"id":"repo-main","name":"BizYeet main worktree","status":"orange","detail":"Claude is running tests"}'
+  -d '{"id":"repo-main","name":"BizYeet main worktree","usageProject":"-Users-you-Private-Projects-bizyeet","status":"orange","detail":"Claude is running tests"}'
 ```
 
 Set a session status:
@@ -53,6 +53,14 @@ Set a session status:
 curl -X PATCH http://localhost:8787/api/sessions/repo-main \
   -H 'Content-Type: application/json' \
   -d '{"status":"red","detail":"Waiting for tool approval"}'
+```
+
+`usageProject` is optional. When present, the dashboard uses it to match the card to `ccusage daily --instances --json` project totals and display session cost on the card. If omitted, the browser tries to match the card `id` or `name` against the ccusage project key.
+
+To see available project keys:
+
+```bash
+npx ccusage claude daily --instances --json
 ```
 
 List sessions:
@@ -77,10 +85,11 @@ set -euo pipefail
 
 SESSION_ID="${CLAUDE_PROJECT_DIR:-default}"
 SESSION_NAME="$(basename "$SESSION_ID")"
+USAGE_PROJECT="$(printf '%s' "$SESSION_ID" | sed 's#[^[:alnum:]]#-#g')"
 
 curl -fsS -X POST http://localhost:8787/api/sessions \
   -H 'Content-Type: application/json' \
-  -d "{\"id\":\"$SESSION_ID\",\"name\":\"$SESSION_NAME\",\"status\":\"orange\",\"detail\":\"Claude is working\"}" >/dev/null
+  -d "{\"id\":\"$SESSION_ID\",\"name\":\"$SESSION_NAME\",\"usageProject\":\"$USAGE_PROJECT\",\"status\":\"orange\",\"detail\":\"Claude is working\"}" >/dev/null
 ```
 
 Examples:
@@ -110,6 +119,7 @@ The app runs:
 
 ```bash
 ccusage claude daily --json
+ccusage claude daily --instances --json
 ccusage claude blocks --json
 ```
 
@@ -117,10 +127,13 @@ If the installed `ccusage` version does not support the agent subcommand form, t
 
 ```bash
 ccusage daily --json
+ccusage daily --instances --json
 ccusage blocks --json
 ```
 
 If the usage panel says data is unavailable, check that the container can read Claude logs and that `CLAUDE_CONFIG_DIR` points to the mounted directory.
+
+Each session card displays cost/tokens from the matched `ccusage --instances` project. For the cleanest match, send `usageProject` from your hook using the exact project key reported by `ccusage`.
 
 ## Local Development
 

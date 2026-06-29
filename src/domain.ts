@@ -7,12 +7,14 @@ export const sessionStatusSchema = z.enum(sessionStatuses)
 export const registerSessionSchema = z.object({
   id: z.string().trim().min(1).max(120).optional(),
   name: z.string().trim().min(1).max(160).optional(),
+  usageProject: z.string().trim().min(1).max(260).optional(),
   status: sessionStatusSchema.default('orange'),
   detail: z.string().trim().max(500).optional(),
 })
 
 export const updateSessionSchema = z.object({
   status: sessionStatusSchema,
+  usageProject: z.string().trim().min(1).max(260).optional(),
   detail: z.string().trim().max(500).optional(),
 })
 
@@ -21,6 +23,7 @@ export type SessionStatus = (typeof sessionStatuses)[number]
 export type Session = {
   readonly id: string
   readonly name: string
+  readonly usageProject: string | null
   readonly status: SessionStatus
   readonly detail: string
   readonly createdAt: string
@@ -50,6 +53,7 @@ export const registerSession = (
   const session: Session = {
     id,
     name: displayName(id, input.name ?? previous?.name),
+    usageProject: input.usageProject ?? previous?.usageProject ?? null,
     status: input.status,
     detail: input.detail ?? previous?.detail ?? '',
     createdAt: previous?.createdAt ?? timestamp,
@@ -76,6 +80,7 @@ export const updateSession = (
   const session: Session = {
     ...previous,
     status: input.status,
+    usageProject: input.usageProject ?? previous.usageProject,
     detail: input.detail ?? previous.detail,
     updatedAt: timestamp,
     statusSince: statusChanged ? timestamp : previous.statusSince,

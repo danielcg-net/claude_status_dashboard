@@ -3,6 +3,7 @@ type SessionStatus = 'green' | 'orange' | 'red'
 type Session = {
   readonly id: string
   readonly name: string
+  readonly usageProject: string | null
   readonly status: SessionStatus
   readonly detail: string
   readonly createdAt: string
@@ -29,6 +30,13 @@ type UsageDay = UsageTotals & {
   readonly modelsUsed: readonly string[]
 }
 
+type UsageProject = {
+  readonly project: string
+  readonly totals: UsageTotals
+  readonly today: UsageDay | null
+  readonly days: readonly UsageDay[]
+}
+
 type UsageBlock = {
   readonly id: string
   readonly startTime: string
@@ -45,6 +53,7 @@ type UsageSummary = {
   readonly generatedAt: string
   readonly totals: UsageTotals
   readonly today: UsageDay | null
+  readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
   readonly error: string | null
 }
@@ -172,9 +181,63 @@ const createElement = <K extends keyof HTMLElementTagNameMap>(
   return element
 }
 
+const formatNumber = (value: number): string => new Intl.NumberFormat().format(value)
+
+const formatMoney = (value: number): string =>
+  new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(value)
+
+const normalizeProjectKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+const projectCandidatesFor = (session: Session): readonly string[] =>
+  [session.usageProject, session.id, session.name]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => [value, normalizeProjectKey(value)])
+
+const findUsageProject = (session: Session, usage: UsageSummary | null): UsageProject | null => {
+  if (!usage?.available) {
+    return null
+  }
+
+  const projects = Object.values(usage.projects)
+  const candidates = new Set(projectCandidatesFor(session))
+
+  return (
+    projects.find((project) => candidates.has(project.project) || candidates.has(normalizeProjectKey(project.project))) ??
+    projects.find((project) =>
+      [...candidates].some((candidate) => normalizeProjectKey(project.project).endsWith(candidate)),
+    ) ??
+    null
+  )
+}
+
+const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement =>
+  usageProject
+    ? createElement('div', { class: 'session-card__usage' }, [
+        createElement('div', {}, [
+          createElement('span', {}, ['Session cost']),
+          createElement('strong', {}, [formatMoney(usageProject.today?.totalCost ?? usageProject.totals.totalCost)]),
+        ]),
+        createElement('div', {}, [
+          createElement('span', {}, ['Tokens']),
+          createElement('strong', {}, [formatNumber(usageProject.today?.totalTokens ?? usageProject.totals.totalTokens)]),
+        ]),
+      ])
+    : createElement('div', { class: 'session-card__usage session-card__usage--empty' }, [
+        createElement('span', {}, ['No ccusage project match']),
+      ])
+
 const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
   const overdue = session.status === 'red' && ageMs >= state.redAlertAfterMs
+  const usageProject = findUsageProject(session, state.usage)
   const card = createElement('article', {
     class: `session-card session-card--${session.status}${overdue ? ' session-card--overdue' : ''}`,
   })
@@ -186,6 +249,7 @@ const renderSession = (session: Session): HTMLElement => {
     ]),
     createElement('h2', {}, [session.name]),
     createElement('p', { class: 'session-card__detail' }, [session.detail || statusDetails[session.status]]),
+    renderSessionUsage(usageProject),
     createElement('dl', { class: 'session-card__meta' }, [
       createElement('div', {}, [
         createElement('dt', {}, ['Status since']),
@@ -200,15 +264,6 @@ const renderSession = (session: Session): HTMLElement => {
 
   return card
 }
-
-const formatNumber = (value: number): string => new Intl.NumberFormat().format(value)
-
-const formatMoney = (value: number): string =>
-  new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(value)
 
 const formatDateLabel = (isoDate: string): string => {
   if (!isoDate) {

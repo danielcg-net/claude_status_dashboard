@@ -20,6 +20,13 @@ type UsageDay = UsageTotals & {
   readonly modelsUsed: readonly string[]
 }
 
+type UsageProject = {
+  readonly project: string
+  readonly totals: UsageTotals
+  readonly today: UsageDay | null
+  readonly days: readonly UsageDay[]
+}
+
 type UsageBlock = {
   readonly id: string
   readonly startTime: string
@@ -36,6 +43,7 @@ export type UsageSummary = {
   readonly generatedAt: string
   readonly totals: UsageTotals
   readonly today: UsageDay | null
+  readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
   readonly error: string | null
 }
@@ -135,11 +143,11 @@ const runCcusage = async (args: readonly string[]): Promise<unknown> => {
   return parseJson(stdout)
 }
 
-const runCcusageWithFallback = async (command: string): Promise<unknown> => {
+const runCcusageWithFallback = async (command: string, args: readonly string[] = []): Promise<unknown> => {
   try {
-    return await runCcusage(['claude', command, '--json'])
+    return await runCcusage(['claude', command, ...args, '--json'])
   } catch {
-    return runCcusage([command, '--json'])
+    return runCcusage([command, ...args, '--json'])
   }
 }
 
@@ -158,6 +166,44 @@ const totalsFromDailyJson = (json: unknown, today: UsageDay | null): UsageTotals
   return today ?? emptyTotals
 }
 
+const sumTotals = (entries: readonly UsageDay[]): UsageTotals =>
+  entries.reduce(
+    (totals, entry) => ({
+      inputTokens: totals.inputTokens + entry.inputTokens,
+      outputTokens: totals.outputTokens + entry.outputTokens,
+      cacheCreationTokens: totals.cacheCreationTokens + entry.cacheCreationTokens,
+      cacheReadTokens: totals.cacheReadTokens + entry.cacheReadTokens,
+      totalTokens: totals.totalTokens + entry.totalTokens,
+      totalCost: totals.totalCost + entry.totalCost,
+    }),
+    emptyTotals,
+  )
+
+const projectsFromInstancesJson = (json: unknown): Readonly<Record<string, UsageProject>> => {
+  if (!isRecord(json) || !isRecord(json.projects)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(json.projects)
+      .map(([project, entries]) => {
+        const days = asArray(entries).map(dayFrom).filter((day): day is UsageDay => day !== null)
+        const today = days.at(-1) ?? null
+
+        return [
+          project,
+          {
+            project,
+            totals: sumTotals(days),
+            today,
+            days,
+          },
+        ] as const
+      })
+      .filter(([, project]) => project.days.length > 0),
+  )
+}
+
 const activeBlockFrom = (json: unknown): UsageBlock | null => {
   const records = isRecord(json) ? asArray(json.blocks ?? json.data) : asArray(json)
   const blocks = records.map(blockFrom).filter((block): block is UsageBlock => block !== null)
@@ -169,8 +215,9 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
   const generatedAt = new Date().toISOString()
 
   try {
-    const [dailyJson, blocksJson] = await Promise.all([
+    const [dailyJson, instancesJson, blocksJson] = await Promise.all([
       runCcusageWithFallback('daily'),
+      runCcusageWithFallback('daily', ['--instances']),
       runCcusageWithFallback('blocks'),
     ])
     const today = latestDayFrom(dailyJson)
@@ -180,6 +227,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       generatedAt,
       totals: totalsFromDailyJson(dailyJson, today),
       today,
+      projects: projectsFromInstancesJson(instancesJson),
       activeBlock: activeBlockFrom(blocksJson),
       error: null,
     }
@@ -189,6 +237,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       generatedAt,
       totals: emptyTotals,
       today: null,
+      projects: {},
       activeBlock: null,
       error: error instanceof Error ? error.message : 'Unable to read ccusage data.',
     }
