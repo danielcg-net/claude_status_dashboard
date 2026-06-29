@@ -38,15 +38,15 @@ jobs:
         run: npm run typecheck
 
       - name: Unit tests
-        run: npx vitest run --reporter=verbose --reporter=json --outputFile=test-results.json
+        run: npx vitest run --reporter=verbose --reporter=junit --outputFile=test-results.xml
 
       - name: Publish test results
         if: always()
         uses: dorny/test-reporter@v2
         with:
           name: Vitest results
-          path: test-results.json
-          reporter: mocha-json
+          path: test-results.xml
+          reporter: java-junit
           fail-on-error: false
 
       - name: Build
