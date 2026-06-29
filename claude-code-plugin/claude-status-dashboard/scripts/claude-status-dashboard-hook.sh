@@ -8,21 +8,32 @@ hook_input="$(cat)"
 payload="$(
   HOOK_INPUT="$hook_input" node <<'NODE'
 const path = require('node:path')
+const fs = require('node:fs')
 
 const inputText = process.env.HOOK_INPUT || ''
 const input = inputText ? JSON.parse(inputText) : {}
 
 const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd()
+const findGitRoot = (start) => {
+  let current = path.resolve(start)
+  while (true) {
+    if (fs.existsSync(path.join(current, '.git'))) return current
+    const parent = path.dirname(current)
+    if (parent === current) return null
+    current = parent
+  }
+}
+const projectRoot = findGitRoot(cwd) || cwd
 const event = input.hook_event_name || 'Unknown'
 const sessionId = input.session_id || cwd
 const sessionShort = String(sessionId).slice(0, 8)
-const projectName = path.basename(cwd) || cwd
+const projectName = path.basename(projectRoot) || projectRoot
 const toolName = typeof input.tool_name === 'string' ? input.tool_name : ''
 const reason = typeof input.reason === 'string' ? input.reason : ''
 
 const usageProject =
   process.env.CLAUDE_STATUS_USAGE_PROJECT ||
-  path.basename(cwd)
+  String(projectRoot).replace(/[^A-Za-z0-9._-]/g, '-')
 
 const detailFor = () => {
   if (event === 'SessionStart') return 'Claude Code session started'

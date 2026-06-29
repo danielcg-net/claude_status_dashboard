@@ -47,10 +47,10 @@ The hook supports these optional environment variables:
 ```bash
 export CLAUDE_STATUS_API_URL="http://localhost:8787"
 export CLAUDE_STATUS_CURL_TIMEOUT="2"
-export CLAUDE_STATUS_USAGE_PROJECT="my-project"
+export CLAUDE_STATUS_USAGE_PROJECT="-Users-you-Projects-my-project"
 ```
 
-Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook derives it from the last directory of the hook `cwd` (e.g., `my-project` from `/Users/you/Projects/my-project`). The dashboard's fuzzy matcher will find the matching ccusage project.
+Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook walks up from the hook `cwd` to the nearest Git root, then derives the path-like ccusage key from that root (e.g., `-Users-you-Projects-my-project` from `/Users/you/Projects/my-project`). This keeps subdirectory work grouped under the repository card.
 
 ## Notes
 
