@@ -12,6 +12,7 @@ The plugin registers hooks for:
 - `PostToolUse`
 - `Notification`
 - `Stop`
+- `StopFailure`
 - `SubagentStop`
 
 Status mapping:
@@ -20,6 +21,7 @@ Status mapping:
 - `PreToolUse`, `PostToolUse`: `orange` (actively working)
 - `Notification`: `red` (needs attention)
 - `Stop`, `SubagentStop`: `green` (finished)
+- `StopFailure`: `red` (error)
 
 The hook sends `POST /api/sessions` to the dashboard. Repeated posts for the same Claude Code `session_id` update the same card.
 

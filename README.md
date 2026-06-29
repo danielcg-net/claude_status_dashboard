@@ -108,6 +108,7 @@ Yes, these can be configured globally in `~/.claude/settings.json`; they do not 
 | `PreToolUse`, `PostToolUse` | 🟠 **orange** (actively working) |
 | `Notification` | 🔴 **red** (needs attention) |
 | `Stop`, `SubagentStop` | 🟢 **green** (finished) |
+| `StopFailure` | 🔴 **red** (error) |
 
 ---
 
