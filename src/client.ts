@@ -94,7 +94,8 @@ const loadExcludedRepos = (): ReadonlySet<string> => {
     const raw = localStorage.getItem('excludedRepos')
     if (!raw) return new Set()
     return new Set(JSON.parse(raw) as string[])
-  } catch {
+  } catch (error) {
+    console.warn('Could not load excluded repos from localStorage:', error)
     return new Set()
   }
 }
@@ -102,8 +103,8 @@ const loadExcludedRepos = (): ReadonlySet<string> => {
 const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
   try {
     localStorage.setItem('excludedRepos', JSON.stringify([...excluded]))
-  } catch {
-    // localStorage may be full or unavailable
+  } catch (error) {
+    console.warn('Could not save excluded repos to localStorage:', error)
   }
 }
 
@@ -550,6 +551,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
         class: 'repo-card__exclude',
         type: 'button',
         'data-exclude-repo': project.project,
+        'aria-label': `Exclude ${shortProjectName(project.project)}`,
         title: 'Exclude this repo from the dashboard',
       }, ['✕']),
     ]),
@@ -679,16 +681,21 @@ const renderExcludedReposBar = (usage: UsageSummary): HTMLElement | null => {
 
   return createElement('div', { class: 'excluded-bar' }, [
     createElement('span', { class: 'excluded-bar__label' }, [`Excluded (${excludedList.length}):`]),
-    ...excludedList.map((name) =>
-      createElement('span', { class: 'excluded-bar__tag' }, [
+    ...excludedList.map((name) => {
+      // Find the full project key for this short name
+      const fullKey = [...state.excludedRepos].find(
+        (key) => shortProjectName(key) === name || key === name,
+      ) ?? name
+      return createElement('span', { class: 'excluded-bar__tag' }, [
         createElement('span', {}, [name]),
         createElement('button', {
           type: 'button',
-          'data-unexclude-repo': name,
-          title: 'Include this repo again',
+          'data-unexclude-repo': fullKey,
+          'aria-label': `Include ${name} again`,
+          title: `Include ${name} again`,
         }, ['✕']),
-      ]),
-    ),
+      ])
+    }),
   ])
 }
 
@@ -813,13 +820,8 @@ const render = (): void => {
 
   document.querySelectorAll<HTMLButtonElement>('[data-unexclude-repo]').forEach((button) => {
     button.addEventListener('click', () => {
-      const name = button.dataset.unexcludeRepo
-      if (!name) return
-      // Find the full project key by matching short name
-      const fullKey = [...state.excludedRepos].find(
-        (key) => shortProjectName(key) === name || key === name,
-      )
-      if (!fullKey) return
+      const fullKey = button.dataset.unexcludeRepo
+      if (!fullKey || !state.excludedRepos.has(fullKey)) return
       const next = new Set(state.excludedRepos)
       next.delete(fullKey)
       saveExcludedRepos(next)
