@@ -153,31 +153,53 @@ const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
     (session) => session.status === 'red' && millisecondsSince(session.statusSince) >= appState.redAlertAfterMs,
   )
 
+const originalTitle = document.title
+
 const beep = (): void => {
   const AudioContextCtor = window.AudioContext ?? window.webkitAudioContext
   const audioContext = new AudioContextCtor()
   const oscillator = audioContext.createOscillator()
   const gain = audioContext.createGain()
 
-  oscillator.type = 'sine'
-  oscillator.frequency.value = 220
-  gain.gain.value = 0.05
+  oscillator.type = 'square'
+  oscillator.frequency.value = 440
+  gain.gain.value = 0.15
   oscillator.connect(gain)
   gain.connect(audioContext.destination)
   oscillator.start()
-  oscillator.stop(audioContext.currentTime + 0.18)
+  oscillator.stop(audioContext.currentTime + 0.35)
 }
 
-const maybeBeep = (appState: AppState): AppState => {
-  const shouldBeep =
-    appState.audioEnabled &&
-    redSessionsPastThreshold(appState).length > 0 &&
-    Date.now() - appState.lastBeepAt > 15_000
+const flashTitle = (): void => {
+  document.title = document.title === originalTitle ? 'WAITING!' : originalTitle
+}
 
-  if (!shouldBeep) {
+const tryFocus = (): void => {
+  try {
+    window.focus()
+  } catch (error) {
+    console.debug('Could not focus dashboard tab:', error)
+  }
+}
+
+const handleAlertState = (appState: AppState): AppState => {
+  const hasRed = redSessionsPastThreshold(appState).length > 0
+
+  if (!appState.audioEnabled || !hasRed) {
+    document.title = originalTitle
     return appState
   }
 
+  const shouldAlert = Date.now() - appState.lastBeepAt > 3_000
+
+  if (!shouldAlert) {
+    // Between alerts: keep title at WAITING to maintain visibility
+    document.title = 'WAITING!'
+    return appState
+  }
+
+  flashTitle()
+  tryFocus()
   beep()
   return { ...appState, lastBeepAt: Date.now() }
 }
@@ -289,8 +311,28 @@ const normalizeProjectKey = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
-const shortProjectName = (projectKey: string): string =>
-  projectKey.split('-').filter(Boolean).pop() ?? projectKey
+const shortProjectName = (projectKey: string): string => {
+  // ccusage keys look like: -Users-name-Private-Projects-dir-name
+  // or -Users-name-dir-name. Find the last known path prefix and
+  // take everything after it. This preserves dashes in dir names.
+  // Only use long, specific prefixes to avoid false positives.
+  const prefixes = ['-Private-Projects-', '-Projects-']
+  let best = -1
+  let bestPrefix = ''
+  for (const prefix of prefixes) {
+    const idx = projectKey.lastIndexOf(prefix)
+    if (idx > best) {
+      best = idx
+      bestPrefix = prefix
+    }
+  }
+  if (best >= 0) {
+    return projectKey.slice(best + bestPrefix.length)
+  }
+  // Fallback: take the last segment (works for simple cases like -Users-name-repo)
+  const parts = projectKey.split('-').filter(Boolean)
+  return parts[parts.length - 1] ?? projectKey
+}
 
 const projectKeyToPath = (projectKey: string): string =>
   '/' + projectKey.replace(/^-+/, '').split('-').join('/')
@@ -703,7 +745,7 @@ const render = (): void => {
 const refresh = async (): Promise<void> => {
   try {
     const nextState = await loadState()
-    state = maybeBeep({ ...state, ...nextState })
+    state = handleAlertState({ ...state, ...nextState })
     render()
   } catch (error) {
     console.error(error)
