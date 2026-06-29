@@ -1,0 +1,93 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Type check and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npx vitest run --reporter=verbose --reporter=junit --outputFile=test-results.xml
+
+      - name: Publish test results
+        if: always()
+        uses: dorny/test-reporter@4a2e97665d5fa767581ef38eca97b9694bd4eef4
+        with:
+          name: Vitest results
+          path: test-results.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Comment test summary on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const xml = fs.readFileSync('test-results.xml', 'utf8');
+            const passed = (xml.match(/failures="0"/g) || []).length;
+            const failed = (xml.match(/failures="[1-9]/g) || []).length;
+            const total = (xml.match(/tests="/g) || []).length;
+            const summary = failed > 0
+              ? `**Tests**: ${total} total, ${failed} failing`
+              : `**Tests**: ${total} passed`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c =>
+              c.body.includes('## Test Results')
+            );
+            const body = `## Test Results\n\n${summary}\n\n_Updated at ${new Date().toISOString()}_`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Build
+        run: npm run build
