@@ -77,26 +77,15 @@ curl -X DELETE http://localhost:8787/api/sessions/repo-main
 
 ## Claude Code Hook Shape
 
-Use whatever Claude Code hook events you prefer, then call the local API with `curl`.
+Sample global Claude Code hooks live in [hooks/](hooks/README.md).
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
+Yes, these can be configured globally in `~/.claude/settings.json`; they do not need to be installed per repo. The sample hook reads Claude Code's hook JSON from stdin and updates the dashboard by `session_id`.
 
-SESSION_ID="${CLAUDE_PROJECT_DIR:-default}"
-SESSION_NAME="$(basename "$SESSION_ID")"
-USAGE_PROJECT="$(printf '%s' "$SESSION_ID" | sed 's#[^[:alnum:]]#-#g')"
+Status mapping:
 
-curl -fsS -X POST http://localhost:8787/api/sessions \
-  -H 'Content-Type: application/json' \
-  -d "{\"id\":\"$SESSION_ID\",\"name\":\"$SESSION_NAME\",\"usageProject\":\"$USAGE_PROJECT\",\"status\":\"orange\",\"detail\":\"Claude is working\"}" >/dev/null
-```
-
-Examples:
-
-- Work started hook: `POST /api/sessions` with `status: "orange"`.
-- Work finished hook: `PATCH /api/sessions/:id` with `status: "green"`.
-- Approval required hook: `PATCH /api/sessions/:id` with `status: "red"`.
+- `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`: `orange`
+- `Notification`: `red`
+- `Stop`, `SubagentStop`: `green`
 
 ## Red Alert Beeps
 
