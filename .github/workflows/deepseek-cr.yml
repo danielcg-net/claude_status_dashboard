@@ -28,12 +28,12 @@ jobs:
         with:
           chat-token: ${{ secrets.CHAT_TOKEN }}
           model: deepseek-v4-pro
-          exclude-patterns: package-lock.json,*.lock,public/assets/client.js,public/assets/client.js.map
+          exclude-patterns: "*.lock,public/assets/client.js,public/assets/client.js.map"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           sys-prompt: "You are a senior engineer reviewing a PR for the Claude Status Dashboard - a local-only web dashboard for tracking Claude Code sessions with ccusage cost integration. Project conventions: Backend is Hono (Node.js) server in src/server.ts. Domain logic in src/domain.ts. ccusage integration in src/usage.ts. Frontend is Vanilla TypeScript in src/client.ts, bundled with esbuild to public/assets/client.js. No frameworks. Styling is Vanilla CSS in public/assets/styles.css. Dark theme with CSS custom properties. Validation uses Zod schemas in src/domain.ts. Testing uses Vitest in tests/. Hooks are Bash scripts in hooks/ and claude-code-plugin/. Plugin is in claude-code-plugin/claude-status-dashboard/. False positives to avoid: actions/checkout@v7 is correct. actions/setup-node@v6 is correct. actions/github-script@v9 is correct. This project uses Node 24 intentionally. The hustcer/deepseek-review action is pinned to a commit SHA. The outcome check uses failure or cancelled. What to check: Functional style - prefer pure functions. Error handling - API endpoints must have proper error responses. TypeScript strict mode. Use ?? for null/undefined defaults. Use createElement helper not innerHTML. CSS custom properties from :root. Input validation via Zod. ccusage parsing handles tokenCounts nested and flat fields, costUSD/totalCost fallbacks, and agent subcommand fallback. Output format: List findings grouped by severity: CRITICAL for bugs and security issues. WARNING for convention violations. SUGGESTION for improvements. If no issues found respond with: No issues found."
 
       - name: Notify on Review Failure
-        if: always() && (steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'cancelled' || steps.deepseek-review.outcome == 'skipped')
+        if: always() && (steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'cancelled')
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
