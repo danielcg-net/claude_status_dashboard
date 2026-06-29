@@ -264,6 +264,9 @@ const sumUsageDays = (days: readonly UsageDay[]): UsageTotals =>
     emptyTotals,
   )
 
+const usageDaysForWindow = (usage: UsageSummary, costWindow: CostWindow): readonly UsageDay[] =>
+  daysForWindow(Object.values(usage.projects).flatMap((project) => project.days), costWindow)
+
 const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
   [...days]
     .filter((day) => day.totalCost > 0 || day.totalTokens > 0)
@@ -425,6 +428,7 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   }
 
   const activeBlock = usage.activeBlock
+  const windowTotals = sumUsageDays(usageDaysForWindow(usage, state.costWindow))
 
   return createElement('section', { class: 'usage', 'aria-label': 'Claude usage' }, [
     createElement('div', { class: 'usage__header' }, [
@@ -438,10 +442,10 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       ]),
     ]),
     createElement('div', { class: 'usage__metrics' }, [
-      usageMetric('Today cost', formatMoney(usage.today?.totalCost ?? 0)),
-      usageMetric('Today tokens', formatNumber(usage.today?.totalTokens ?? 0)),
-      usageMetric('Total cost', formatMoney(usage.totals.totalCost)),
-      usageMetric('Total tokens', formatNumber(usage.totals.totalTokens)),
+      usageMetric(`Cost · ${costWindowLabels[state.costWindow]}`, formatMoney(windowTotals.totalCost)),
+      usageMetric(`Tokens · ${costWindowLabels[state.costWindow]}`, formatNumber(windowTotals.totalTokens)),
+      usageMetric('Matched repos', formatNumber(Object.keys(usage.projects).length)),
+      usageMetric('Active block', activeBlock ? formatMoney(activeBlock.totalCost) : 'None'),
     ]),
     createElement('div', { class: 'usage__block' }, [
       createElement('span', { class: activeBlock ? 'usage__block-dot usage__block-dot--active' : 'usage__block-dot' }),
