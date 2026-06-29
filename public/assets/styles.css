@@ -629,27 +629,34 @@ h1 {
   color: var(--red);
 }
 
-/* ── Excluded repos bar ─────────────────────────────── */
+/* ── Excluded repos (collapsible, inside usage card) ── */
 
-.excluded-bar {
+.excluded-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.excluded-details__summary {
+  color: var(--muted);
+  font-size: 0.84rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.excluded-details__summary:hover {
+  color: var(--text);
+}
+
+.excluded-details__tags {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  margin-top: 10px;
 }
 
-.excluded-bar__label {
-  color: var(--muted);
-  font-size: 0.82rem;
-  margin-right: 4px;
-}
-
-.excluded-bar__tag {
+.excluded-details__tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -660,7 +667,7 @@ h1 {
   font-size: 0.8rem;
 }
 
-.excluded-bar__tag button {
+.excluded-details__tag button {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
@@ -677,7 +684,7 @@ h1 {
   justify-content: center;
 }
 
-.excluded-bar__tag button:hover {
+.excluded-details__tag button:hover {
   background: var(--red);
   color: var(--text);
 }

@@ -540,6 +540,7 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
           : 'No active usage block reported',
       ]),
     ]),
+    renderExcludedReposSection(usage) ?? createElement('div', { style: 'display:none' }),
   ])
 }
 
@@ -679,7 +680,7 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
   ])
 }
 
-const renderExcludedReposBar = (usage: UsageSummary): HTMLElement | null => {
+const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => {
   if (state.excludedRepos.size === 0) return null
 
   const tags = [...state.excludedRepos]
@@ -689,19 +690,23 @@ const renderExcludedReposBar = (usage: UsageSummary): HTMLElement | null => {
     }))
     .sort((a, b) => a.display.localeCompare(b.display))
 
-  return createElement('div', { class: 'excluded-bar' }, [
-    createElement('span', { class: 'excluded-bar__label' }, [`Excluded (${tags.length}):`]),
-    ...tags.map(({ key, display }) =>
-      createElement('span', { class: 'excluded-bar__tag' }, [
-        createElement('span', {}, [display]),
-        createElement('button', {
-          type: 'button',
-          'data-unexclude-repo': key,
-          'aria-label': `Include ${display} again`,
-          title: `Include ${display} again`,
-        }, ['✕']),
-      ]),
-    ),
+  return createElement('details', { class: 'excluded-details' }, [
+    createElement('summary', { class: 'excluded-details__summary' }, [
+      `Excluded repos (${tags.length}) — click to manage`,
+    ]),
+    createElement('div', { class: 'excluded-details__tags' }, [
+      ...tags.map(({ key, display }) =>
+        createElement('span', { class: 'excluded-details__tag' }, [
+          createElement('span', {}, [display]),
+          createElement('button', {
+            type: 'button',
+            'data-unexclude-repo': key,
+            'aria-label': `Include ${display} again`,
+            title: `Include ${display} again`,
+          }, ['✕']),
+        ]),
+      ),
+    ]),
   ])
 }
 
@@ -736,9 +741,7 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
     }
   }
 
-  const excludedBar = renderExcludedReposBar(usage)
   return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
-    ...(excludedBar ? [excludedBar] : []),
     createElement('div', { class: 'repo-explorer__header' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('span', { class: 'repo-explorer__count' }, [
