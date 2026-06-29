@@ -171,7 +171,7 @@ const beep = (): void => {
 }
 
 const flashTitle = (): void => {
-  document.title = document.title === originalTitle ? '🔴 WAITING!' : originalTitle
+  document.title = document.title === originalTitle ? 'WAITING!' : originalTitle
 }
 
 const tryFocus = (): void => {
@@ -182,26 +182,22 @@ const tryFocus = (): void => {
   }
 }
 
-const maybeBeep = (appState: AppState): AppState => {
+const handleAlertState = (appState: AppState): AppState => {
   const hasRed = redSessionsPastThreshold(appState).length > 0
 
-  // Flash title and try to focus while red sessions exist
-  if (appState.audioEnabled && hasRed) {
-    flashTitle()
-    tryFocus()
-  } else {
+  if (!appState.audioEnabled || !hasRed) {
     document.title = originalTitle
-  }
-
-  const shouldBeep =
-    appState.audioEnabled &&
-    hasRed &&
-    Date.now() - appState.lastBeepAt > 3_000
-
-  if (!shouldBeep) {
     return appState
   }
 
+  const shouldAlert = Date.now() - appState.lastBeepAt > 3_000
+
+  if (!shouldAlert) {
+    return appState
+  }
+
+  flashTitle()
+  tryFocus()
   beep()
   return { ...appState, lastBeepAt: Date.now() }
 }
@@ -746,7 +742,7 @@ const render = (): void => {
 const refresh = async (): Promise<void> => {
   try {
     const nextState = await loadState()
-    state = maybeBeep({ ...state, ...nextState })
+    state = handleAlertState({ ...state, ...nextState })
     render()
   } catch (error) {
     console.error(error)

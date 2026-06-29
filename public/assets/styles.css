@@ -8,7 +8,7 @@
   --muted: #a8b0bd;
   --line: #343a44;
   --green: #3ddc84;
-  --yellow: #8a8f9d;
+  --yellow: #8a8f9d;  /* idle — deliberately gray to distinguish from orange (running) */
   --orange: #f5a524;
   --red: #ff4d5e;
   --blue: #7db7ff;
