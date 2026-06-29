@@ -93,17 +93,17 @@ Status mapping:
 
 A Claude Code plugin package lives in [claude-code-plugin/claude-status-dashboard](claude-code-plugin/claude-status-dashboard/README.md). It bundles the same hook behavior with a `.claude-plugin/plugin.json` manifest and plugin `hooks/hooks.json`.
 
-Local install:
+Install from the GitHub marketplace:
 
 ```bash
-claude plugin marketplace add ./claude-code-plugin --scope user
+claude plugin marketplace add danielcg-net/claude_status_dashboard --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 
-Publish install after this repo exists on GitHub:
+For local development, use the local marketplace instead:
 
 ```bash
-claude plugin marketplace add danielcg-net/claude_status_dashboard --sparse claude-code-plugin --scope user
+claude plugin marketplace add ./claude-code-plugin --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 

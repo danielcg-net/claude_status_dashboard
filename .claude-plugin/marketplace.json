@@ -1,0 +1,13 @@
+{
+  "name": "claude-status-dashboard",
+  "owner": {
+    "name": "danielcg-net"
+  },
+  "plugins": [
+    {
+      "name": "claude-status-dashboard",
+      "source": "./claude-code-plugin/claude-status-dashboard",
+      "description": "Reports Claude Code session status to a local Claude Status Dashboard."
+    }
+  ]
+}

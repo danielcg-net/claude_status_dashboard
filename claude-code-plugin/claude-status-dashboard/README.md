@@ -53,16 +53,10 @@ claude plugin validate ./claude-code-plugin/claude-status-dashboard
 
 ## Install
 
-This repo includes a local Claude Code marketplace at:
-
-```text
-./claude-code-plugin
-```
-
-Add it to Claude Code and install the plugin globally:
+This repo is published as a Claude Code marketplace on GitHub. Add it and install the plugin:
 
 ```bash
-claude plugin marketplace add ./claude-code-plugin --scope user
+claude plugin marketplace add danielcg-net/claude_status_dashboard --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 
@@ -79,6 +73,15 @@ Start the dashboard before using Claude Code:
 docker compose up --build
 ```
 
+### Local install (development)
+
+If you are developing the plugin locally:
+
+```bash
+claude plugin marketplace add ./claude-code-plugin --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
 ## Updating
 
 After pulling new changes from the repository, the plugin cache still has the old hook script. Update it by reinstalling:
@@ -93,13 +96,4 @@ Or copy the updated script directly:
 ```bash
 cp claude-code-plugin/claude-status-dashboard/scripts/claude-status-dashboard-hook.sh \
   ~/.claude/plugins/cache/claude-status-dashboard/claude-status-dashboard/0.1.0/scripts/claude-status-dashboard-hook.sh
-```
-
-## Publish
-
-After publishing this repository, users can add the GitHub repo as a marketplace. Because this repo stores the marketplace under `claude-code-plugin`, use sparse checkout:
-
-```bash
-claude plugin marketplace add danielcg-net/claude_status_dashboard --sparse claude-code-plugin --scope user
-claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
