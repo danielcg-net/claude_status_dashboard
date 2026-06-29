@@ -1,17 +1,34 @@
 # Claude Status Dashboard
 
-Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks can register sessions and push status changes to the API exposed by the Docker container.
+> **Real-time visibility into your Claude Code sessions — costs, statuses, and history at a glance.**
 
-The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
+[![GitHub](https://img.shields.io/badge/GitHub-danielcg--net/claude__status__dashboard-181717?logo=github)](https://github.com/danielcg-net/claude_status_dashboard)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks register sessions and push status changes to the API exposed by the Docker container. The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
+
+---
+
+## Screenshots
+
+| Active Sessions | Usage & Cost Explorer | Repo Cost Explorer |
+|:---:|:---:|:---:|
+| ![Active sessions dashboard](ClaudeSessionDashboard-01.png) | ![Usage metrics and cost explorer](ClaudeSessionDashboard-02.png) | ![Repo cost explorer detail](ClaudeSessionDashboard-03.png) |
+
+---
 
 ## Statuses
 
-- `green`: Claude has finished running something.
-- `yellow`: Claude is idle at the prompt, waiting for your input.
-- `orange`: Claude is thinking and doing stuff.
-- `red`: Claude is paused waiting for an approval or decision.
+| Color | Meaning |
+|:---:|:---|
+| 🟢 **Green** | Claude has finished running something. |
+| 🟡 **Yellow** | Claude is idle at the prompt, waiting for your input. |
+| 🟠 **Orange** | Claude is thinking and doing stuff. |
+| 🔴 **Red** | Claude is paused waiting for an approval or decision. |
 
-## Run With Docker Compose
+## Quick Start
+
+### Docker Compose (recommended)
 
 ```bash
 docker compose up --build
@@ -32,15 +49,17 @@ environment:
 
 If your Claude Code logs live somewhere else, change the volume source and keep `CLAUDE_CONFIG_DIR` pointed at the mounted path.
 
+---
+
 ## API
 
-Read `ccusage` totals:
+### Read ccusage totals
 
 ```bash
 curl http://localhost:8787/api/usage
 ```
 
-Register or update a session:
+### Register or update a session
 
 ```bash
 curl -X POST http://localhost:8787/api/sessions \
@@ -48,7 +67,7 @@ curl -X POST http://localhost:8787/api/sessions \
   -d '{"id":"repo-main","name":"My project main worktree","usageProject":"my-project","status":"orange","detail":"Claude is running tests"}'
 ```
 
-Set a session status:
+### Set a session status
 
 ```bash
 curl -X PATCH http://localhost:8787/api/sessions/repo-main \
@@ -56,62 +75,67 @@ curl -X PATCH http://localhost:8787/api/sessions/repo-main \
   -d '{"status":"red","detail":"Waiting for tool approval"}'
 ```
 
-`usageProject` is optional. When present, the dashboard uses it to match the card to `ccusage daily --instances --json` project totals and display session cost on the card. If omitted, the browser tries to match the card `id` or `name` against the ccusage project key.
-
-To see available project keys:
-
-```bash
-npx ccusage claude daily --instances --json
-```
-
-List sessions:
+### List sessions
 
 ```bash
 curl http://localhost:8787/api/sessions
 ```
 
-Delete a session:
+### Delete a session
 
 ```bash
 curl -X DELETE http://localhost:8787/api/sessions/repo-main
 ```
 
-## Claude Code Hook Shape
+> **`usageProject`** is optional. When present, the dashboard uses it to match the card to `ccusage daily --instances --json` project totals and display session cost on the card. If omitted, the browser tries to match the card `id` or `name` against the ccusage project key.
+>
+> To see available project keys:
+> ```bash
+> npx ccusage claude daily --instances --json
+> ```
+
+## Claude Code Hook
 
 Sample global Claude Code hooks live in [hooks/](hooks/README.md).
 
 Yes, these can be configured globally in `~/.claude/settings.json`; they do not need to be installed per repo. The sample hook reads Claude Code's hook JSON from stdin and updates the dashboard by `session_id`.
 
-Status mapping:
+### Status Mapping
 
-- `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
-- `PreToolUse`, `PostToolUse`: `orange` (actively working)
-- `Notification`: `red` (needs attention)
-- `Stop`, `SubagentStop`: `green` (finished)
+| Hook Event | Dashboard Status |
+|:---|---:|
+| `SessionStart`, `UserPromptSubmit` | 🟡 **yellow** (idle at prompt) |
+| `PreToolUse`, `PostToolUse` | 🟠 **orange** (actively working) |
+| `Notification` | 🔴 **red** (needs attention) |
+| `Stop`, `SubagentStop` | 🟢 **green** (finished) |
+
+---
 
 ## Claude Code Plugin
 
 A Claude Code plugin package lives in [claude-code-plugin/claude-status-dashboard](claude-code-plugin/claude-status-dashboard/README.md). It bundles the same hook behavior with a `.claude-plugin/plugin.json` manifest and plugin `hooks/hooks.json`.
 
-Install from the GitHub marketplace:
+### Install from the GitHub marketplace
 
 ```bash
 claude plugin marketplace add danielcg-net/claude_status_dashboard --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 
-For local development, use the local marketplace instead:
+### Local development
 
 ```bash
 claude plugin marketplace add ./claude-code-plugin --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 
+---
+
 ## Red Alert Beeps
 
-The browser can emit a quiet beep when any card remains `red` longer than `RED_ALERT_AFTER_MS`.
+The browser can emit a quiet beep when any card remains **red** longer than `RED_ALERT_AFTER_MS`.
 
-Browsers require a user gesture before audio can play, so click `Enable beeps` after opening the page.
+Browsers require a user gesture before audio can play, so click **Enable beeps** after opening the page.
 
 Configure the threshold in `compose.yml`:
 
@@ -120,7 +144,9 @@ environment:
   RED_ALERT_AFTER_MS: "300000"
 ```
 
-## ccusage
+---
+
+## ccusage Integration
 
 Usage metrics are refreshed through the server every `USAGE_CACHE_TTL_MS` milliseconds. The browser polls `/api/usage` every 30 seconds.
 
@@ -146,7 +172,7 @@ Each session card displays cost/tokens from the matched `ccusage --instances` pr
 
 For the cleanest match, send `usageProject` from your hook using the exact project key reported by `ccusage`.
 
-## Local Development
+### Local Development
 
 ```bash
 npm install
@@ -154,6 +180,8 @@ npm run dev
 ```
 
 Then open [http://localhost:8787](http://localhost:8787).
+
+---
 
 ## Publish Target
 
