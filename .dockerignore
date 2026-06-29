@@ -1,0 +1,8 @@
+node_modules/
+dist/
+public/assets/client.js
+public/assets/client.js.map
+.git/
+.env
+.DS_Store
+npm-debug.log*

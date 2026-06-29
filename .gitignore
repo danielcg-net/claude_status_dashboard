@@ -1,0 +1,8 @@
+node_modules/
+dist/
+public/assets/client.js
+public/assets/client.js.map
+.env
+.DS_Store
+npm-debug.log*
+hooks/settings.global.json
