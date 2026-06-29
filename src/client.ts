@@ -292,6 +292,9 @@ const normalizeProjectKey = (value: string): string =>
 const shortProjectName = (projectKey: string): string =>
   projectKey.split('-').filter(Boolean).pop() ?? projectKey
 
+const projectKeyToPath = (projectKey: string): string =>
+  '/' + projectKey.replace(/^-+/, '').split('-').join('/')
+
 const projectCandidatesFor = (session: Session): readonly string[] =>
   [session.usageProject, session.id, session.name]
     .filter((value): value is string => Boolean(value))
@@ -479,7 +482,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
     'data-repo': project.project,
   }, [
     createElement('div', { class: 'repo-card__header' }, [
-      createElement('h3', { class: 'repo-card__name', title: project.project }, [shortProjectName(project.project)]),
+      createElement('h3', { class: 'repo-card__name', title: projectKeyToPath(project.project) }, [shortProjectName(project.project)]),
       createElement('span', { class: 'repo-card__cost' }, [formatMoney(totals.totalCost)]),
     ]),
     createElement('div', { class: 'repo-card__metrics' }, [
@@ -536,7 +539,7 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
       }, ['← All repos']),
       createElement('div', {}, [
         createElement('h2', {}, [shortProjectName(project.project)]),
-        createElement('p', { class: 'repo-detail__path' }, [project.project]),
+        createElement('p', { class: 'repo-detail__path' }, [projectKeyToPath(project.project)]),
         createElement('p', { class: 'repo-detail__subtitle' }, [
           `${formatMoney(totals.totalCost)} · ${formatNumber(totals.totalTokens)} tokens · ${allDays.length} days`,
         ]),
