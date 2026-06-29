@@ -24,7 +24,7 @@ jobs:
       - name: DeepSeek Code Review
         id: deepseek-review
         continue-on-error: true
-        uses: hustcer/deepseek-review@v1
+        uses: hustcer/deepseek-review@90c887892350e87fdcf517ddc41b3b826941614b
         with:
           chat-token: ${{ secrets.CHAT_TOKEN }}
           model: deepseek-v4-pro
@@ -42,8 +42,13 @@ jobs:
             - **Hooks**: Bash scripts in `hooks/` and `claude-code-plugin/` that pipe Claude Code hook JSON to the API.
             - **Plugin**: Claude Code plugin package in `claude-code-plugin/claude-status-dashboard/`.
 
-            ## Node.js version
+            ## False positives to avoid
+            - `actions/checkout@v7` is correct. Do **not** claim it doesn't exist — GitHub Actions supports floating tags and v7 is available.
+            - `actions/setup-node@v6` is correct. Do **not** claim it doesn't exist.
+            - `actions/github-script@v9` is correct. Do **not** claim it doesn't exist.
             - This project uses Node 24 intentionally. Do **not** flag it as unstable or non-LTS.
+            - The `hustcer/deepseek-review` action is pinned to a commit SHA for supply-chain security. Do **not** flag the lack of version pinning.
+            - The outcome check uses `failure || cancelled`. Do **not** claim `error` is a valid outcome — `cancelled` is the correct GitHub Actions outcome for interrupted runs.
 
             ## What to check
             - **Functional style**: Prefer pure functions and module-level constants over classes.
@@ -64,7 +69,7 @@ jobs:
             If no issues found, respond with: "✅ No issues found. Code follows project conventions."
 
       - name: Notify on Review Failure
-        if: steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'error'
+        if: steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'cancelled'
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
