@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 concurrency:
   group: deepseek-cr-${{ github.ref }}
@@ -14,7 +15,7 @@ concurrency:
 
 jobs:
   review:
-    name: DeepSeek CR
+    name: deepseek-code-review
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -40,6 +41,9 @@ jobs:
             - **Testing**: Vitest in `tests/`.
             - **Hooks**: Bash scripts in `hooks/` and `claude-code-plugin/` that pipe Claude Code hook JSON to the API.
             - **Plugin**: Claude Code plugin package in `claude-code-plugin/claude-status-dashboard/`.
+
+            ## Node.js version
+            - This project uses Node 24 intentionally. Do **not** flag it as unstable or non-LTS.
 
             ## What to check
             - **Functional style**: Prefer pure functions and module-level constants over classes.
@@ -69,6 +73,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
+              per_page: 100,
             });
             const alreadyNotified = comments.some(c =>
               c.body.includes('⚠️ DeepSeek Code Review encountered an error')
