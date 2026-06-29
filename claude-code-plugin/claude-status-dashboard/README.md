@@ -20,7 +20,8 @@ Status mapping:
 - `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
 - `PreToolUse`, `PostToolUse`: `orange` (actively working)
 - `Notification`: `red` (needs attention)
-- `Stop`, `StopFailure`, `SubagentStop`: `green` (finished)
+- `Stop`, `SubagentStop`: `green` (finished)
+- `StopFailure`: `red` (error)
 
 The hook sends `POST /api/sessions` to the dashboard. Repeated posts for the same Claude Code `session_id` update the same card.
 

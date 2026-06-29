@@ -107,7 +107,8 @@ Yes, these can be configured globally in `~/.claude/settings.json`; they do not 
 | `SessionStart`, `UserPromptSubmit` | 🟡 **yellow** (idle at prompt) |
 | `PreToolUse`, `PostToolUse` | 🟠 **orange** (actively working) |
 | `Notification` | 🔴 **red** (needs attention) |
-| `Stop`, `StopFailure`, `SubagentStop` | 🟢 **green** (finished) |
+| `Stop`, `SubagentStop` | 🟢 **green** (finished) |
+| `StopFailure` | 🔴 **red** (error) |
 
 ---
 
