@@ -45,7 +45,7 @@ Register or update a session:
 ```bash
 curl -X POST http://localhost:8787/api/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"id":"repo-main","name":"My project main worktree","usageProject":"-Users-username-Private-Projects-my-project","status":"orange","detail":"Claude is running tests"}'
+  -d '{"id":"repo-main","name":"My project main worktree","usageProject":"my-project","status":"orange","detail":"Claude is running tests"}'
 ```
 
 Set a session status:

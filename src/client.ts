@@ -476,7 +476,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
     'data-repo': project.project,
   }, [
     createElement('div', { class: 'repo-card__header' }, [
-      createElement('h3', { class: 'repo-card__name' }, [project.project]),
+      createElement('h3', { class: 'repo-card__name', title: project.project }, [project.project.split('-').filter(Boolean).pop() ?? project.project]),
       createElement('span', { class: 'repo-card__cost' }, [formatMoney(totals.totalCost)]),
     ]),
     createElement('div', { class: 'repo-card__metrics' }, [
@@ -532,7 +532,8 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
         'data-repo-back': '',
       }, ['← All repos']),
       createElement('div', {}, [
-        createElement('h2', {}, [project.project]),
+        createElement('h2', {}, [project.project.split('-').filter(Boolean).pop() ?? project.project]),
+        createElement('p', { class: 'repo-detail__path' }, [project.project]),
         createElement('p', { class: 'repo-detail__subtitle' }, [
           `${formatMoney(totals.totalCost)} · ${formatNumber(totals.totalTokens)} tokens · ${allDays.length} days`,
         ]),
