@@ -22,7 +22,7 @@ const reason = typeof input.reason === 'string' ? input.reason : ''
 
 const usageProject =
   process.env.CLAUDE_STATUS_USAGE_PROJECT ||
-  String(cwd).replace(/[^A-Za-z0-9._-]/g, '-')
+  path.basename(cwd)
 
 const detailFor = () => {
   if (event === 'SessionStart') return 'Claude Code session started'

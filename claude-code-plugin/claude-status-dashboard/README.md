@@ -38,10 +38,10 @@ Optional environment variables:
 ```bash
 export CLAUDE_STATUS_API_URL="http://localhost:8787"
 export CLAUDE_STATUS_CURL_TIMEOUT="2"
-export CLAUDE_STATUS_USAGE_PROJECT="-Users-username-Private-Projects-your-repo"
+export CLAUDE_STATUS_USAGE_PROJECT="my-project"
 ```
 
-Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook derives `usageProject` from Claude Code's hook `cwd`, matching the path-like key style used by `ccusage daily --instances --json`.
+Normally you do not need `CLAUDE_STATUS_USAGE_PROJECT`. The hook derives `usageProject` from the last directory of the hook `cwd` (e.g., `bizyeet` from `/Users/you/Private/Projects/bizyeet`). The dashboard's fuzzy matcher will find the matching ccusage project.
 
 ## Local Validation
 

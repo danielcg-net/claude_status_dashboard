@@ -289,6 +289,12 @@ const normalizeProjectKey = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
+const shortProjectName = (projectKey: string): string =>
+  projectKey.split('-').filter(Boolean).pop() ?? projectKey
+
+const projectKeyToPath = (projectKey: string): string =>
+  '/' + projectKey.replace(/^-+/, '').split('-').join('/')
+
 const projectCandidatesFor = (session: Session): readonly string[] =>
   [session.usageProject, session.id, session.name]
     .filter((value): value is string => Boolean(value))
@@ -338,7 +344,7 @@ const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
       ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage in this window'])
       : createElement(
           'div',
-          { class: 'session-card__daily', 'aria-label': `Daily ${usageProject.project} usage` },
+          { class: 'session-card__daily', 'aria-label': `Daily ${shortProjectName(usageProject.project)} usage` },
           recentDays.map((day) =>
             createElement('div', { class: 'session-card__daily-row' }, [
               createElement('span', { class: 'session-card__daily-date' }, [formatDayLabel(day.date)]),
@@ -476,7 +482,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
     'data-repo': project.project,
   }, [
     createElement('div', { class: 'repo-card__header' }, [
-      createElement('h3', { class: 'repo-card__name' }, [project.project]),
+      createElement('h3', { class: 'repo-card__name', title: projectKeyToPath(project.project) }, [shortProjectName(project.project)]),
       createElement('span', { class: 'repo-card__cost' }, [formatMoney(totals.totalCost)]),
     ]),
     createElement('div', { class: 'repo-card__metrics' }, [
@@ -532,7 +538,8 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
         'data-repo-back': '',
       }, ['← All repos']),
       createElement('div', {}, [
-        createElement('h2', {}, [project.project]),
+        createElement('h2', {}, [shortProjectName(project.project)]),
+        createElement('p', { class: 'repo-detail__path' }, [projectKeyToPath(project.project)]),
         createElement('p', { class: 'repo-detail__subtitle' }, [
           `${formatMoney(totals.totalCost)} · ${formatNumber(totals.totalTokens)} tokens · ${allDays.length} days`,
         ]),
