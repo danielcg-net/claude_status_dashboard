@@ -154,7 +154,12 @@ const emptyTotals: UsageTotals = {
 
 let state = initialState
 
-const millisecondsSince = (isoDate: string): number => Date.now() - new Date(isoDate).getTime()
+const millisecondsSince = (isoDate: string): number => {
+  // The server sends UTC ISO timestamps. Parse as UTC and compare against local time.
+  const utcMs = Date.parse(isoDate)
+  if (isNaN(utcMs)) return 0
+  return Date.now() - utcMs
+}
 
 const formatRelative = (isoDate: string): string => {
   const seconds = Math.max(0, Math.floor(millisecondsSince(isoDate) / 1000))
@@ -170,6 +175,17 @@ const formatRelative = (isoDate: string): string => {
 
   return `${seconds}s ago`
 }
+
+// Format a UTC ISO timestamp as a local time string for tooltips / absolute display.
+const formatLocalTime = (isoDate: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(isoDate))
 
 const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
   appState.sessions.filter(
@@ -327,11 +343,19 @@ const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
     .sort((left, right) => right.date.localeCompare(left.date))
     .slice(0, 5)
 
-const formatDayLabel = (date: string): string =>
-  new Intl.DateTimeFormat(undefined, {
+const formatDayLabel = (date: string): string => {
+  // date is "YYYY-MM-DD" from ccusage. Parse parts to avoid UTC-to-local date shifts
+  // (e.g. "2026-06-28" as UTC midnight becomes June 27 in negative-offset timezones).
+  const parts = date.split('-')
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+  return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
-  }).format(new Date(`${date}T00:00:00`))
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)))
+}
 
 const normalizeProjectKey = (value: string): string =>
   value
@@ -493,11 +517,11 @@ const renderSession = (session: Session): HTMLElement => {
     createElement('dl', { class: 'session-card__meta' }, [
       createElement('div', {}, [
         createElement('dt', {}, ['Status since']),
-        createElement('dd', {}, [formatRelative(session.statusSince)]),
+        createElement('dd', { title: formatLocalTime(session.statusSince) }, [formatRelative(session.statusSince)]),
       ]),
       createElement('div', {}, [
         createElement('dt', {}, ['Updated']),
-        createElement('dd', {}, [formatRelative(session.updatedAt)]),
+        createElement('dd', { title: formatLocalTime(session.updatedAt) }, [formatRelative(session.updatedAt)]),
       ]),
     ]),
   )
@@ -563,7 +587,7 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       ]),
       createElement('div', { class: 'usage__actions' }, [
         renderCostWindowControls(),
-        createElement('span', { class: 'usage__freshness' }, [`Updated ${formatRelative(usage.generatedAt)}`]),
+        createElement('span', { class: 'usage__freshness', title: formatLocalTime(usage.generatedAt) }, [`Updated ${formatRelative(usage.generatedAt)}`]),
       ]),
     ]),
     createElement('div', { class: 'usage__metrics' }, [
