@@ -789,11 +789,11 @@ const render = (): void => {
             createElement('span', {}, [statusLabels[status]]),
             createElement('strong', {}, [String(state.sessions.filter((session) => {
               if (session.status !== status) return false
+              // Hide sessions whose usageProject or matched project is excluded
               const project = findUsageProject(session, state.usage)
-              // Hide sessions matching excluded repos
               if (project && state.excludedRepos.has(project.project)) return false
+              if (!project && session.usageProject && [...state.excludedRepos].some((k) => shortProjectName(k) === session.usageProject)) return false
               // When a repo is selected, only count sessions for that repo
-              // (sessions with no project match are always shown)
               if (state.selectedRepo && project) {
                 return project.project === state.selectedRepo
               }
@@ -809,11 +809,11 @@ const render = (): void => {
           ])
         : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
             .filter((session) => {
+              // Hide sessions whose usageProject or matched project is excluded
               const project = findUsageProject(session, state.usage)
-              // Hide sessions matching excluded repos
               if (project && state.excludedRepos.has(project.project)) return false
+              if (!project && session.usageProject && [...state.excludedRepos].some((k) => shortProjectName(k) === session.usageProject)) return false
               // When a repo is selected, only show sessions for that repo
-              // (sessions with no project match are always shown)
               if (state.selectedRepo && project) {
                 return project.project === state.selectedRepo
               }
