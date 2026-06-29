@@ -154,22 +154,24 @@ const emptyTotals: UsageTotals = {
 
 let state = initialState
 
-const millisecondsSince = (isoDate: string): number => {
-  // The server sends UTC ISO timestamps. Parse as UTC and compare against local time.
+// Parse a UTC ISO string and return the epoch ms, or null if invalid.
+const parseIso = (isoDate: string): number | null => {
   const utcMs = Date.parse(isoDate)
   if (isNaN(utcMs)) {
-    console.warn('millisecondsSince: invalid ISO date string', isoDate)
-    return 0
+    console.warn('parseIso: invalid ISO date string', isoDate)
+    return null
   }
-  return Date.now() - utcMs
+  return utcMs
+}
+
+const millisecondsSince = (isoDate: string): number | null => {
+  const utcMs = parseIso(isoDate)
+  return utcMs === null ? null : Date.now() - utcMs
 }
 
 const formatRelative = (isoDate: string): string => {
-  const utcMs = Date.parse(isoDate)
-  if (isNaN(utcMs)) {
-    console.warn('formatRelative: invalid ISO date string', isoDate)
-    return 'unknown'
-  }
+  const utcMs = parseIso(isoDate)
+  if (utcMs === null) return 'unknown'
 
   const seconds = Math.max(0, Math.floor((Date.now() - utcMs) / 1000))
   const minutes = Math.floor(seconds / 60)
@@ -186,12 +188,9 @@ const formatRelative = (isoDate: string): string => {
 }
 
 // Format a UTC ISO timestamp as a local time string for tooltips / absolute display.
-const formatLocalTime = (isoDate: string): string => {
-  const utcMs = Date.parse(isoDate)
-  if (isNaN(utcMs)) {
-    console.warn('formatLocalTime: invalid ISO date string', isoDate)
-    return ''
-  }
+const formatLocalTime = (isoDate: string): string | null => {
+  const utcMs = parseIso(isoDate)
+  if (utcMs === null) return null
   return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
@@ -203,9 +202,11 @@ const formatLocalTime = (isoDate: string): string => {
 }
 
 const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
-  appState.sessions.filter(
-    (session) => session.status === 'red' && millisecondsSince(session.statusSince) >= appState.redAlertAfterMs,
-  )
+  appState.sessions.filter((session) => {
+    if (session.status !== 'red') return false
+    const ms = millisecondsSince(session.statusSince)
+    return ms !== null && ms >= appState.redAlertAfterMs
+  })
 
 const originalTitle = document.title
 
@@ -521,7 +522,7 @@ const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
 
 const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
-  const overdue = session.status === 'red' && ageMs >= state.redAlertAfterMs
+  const overdue = session.status === 'red' && ageMs !== null && ageMs >= state.redAlertAfterMs
   const usageProject = findUsageProject(session, state.usage)
   const card = createElement('article', {
     class: `session-card session-card--${session.status}${overdue ? ' session-card--overdue' : ''}`,
@@ -538,11 +539,17 @@ const renderSession = (session: Session): HTMLElement => {
     createElement('dl', { class: 'session-card__meta' }, [
       createElement('div', {}, [
         createElement('dt', {}, ['Status since']),
-        createElement('dd', { title: formatLocalTime(session.statusSince) }, [formatRelative(session.statusSince)]),
+        createElement('dd', (() => {
+          const t = formatLocalTime(session.statusSince)
+          return t !== null ? { title: t } : {}
+        })(), [formatRelative(session.statusSince)]),
       ]),
       createElement('div', {}, [
         createElement('dt', {}, ['Updated']),
-        createElement('dd', { title: formatLocalTime(session.updatedAt) }, [formatRelative(session.updatedAt)]),
+        createElement('dd', (() => {
+          const t = formatLocalTime(session.updatedAt)
+          return t !== null ? { title: t } : {}
+        })(), [formatRelative(session.updatedAt)]),
       ]),
     ]),
   )
@@ -608,7 +615,10 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       ]),
       createElement('div', { class: 'usage__actions' }, [
         renderCostWindowControls(),
-        createElement('span', { class: 'usage__freshness', title: formatLocalTime(usage.generatedAt) }, [`Updated ${formatRelative(usage.generatedAt)}`]),
+        createElement('span', { class: 'usage__freshness', ...(() => {
+          const t = formatLocalTime(usage.generatedAt)
+          return t !== null ? { title: t } : {}
+        })() }, [`Updated ${formatRelative(usage.generatedAt)}`]),
       ]),
     ]),
     createElement('div', { class: 'usage__metrics' }, [
