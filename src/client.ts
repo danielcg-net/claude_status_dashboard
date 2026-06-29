@@ -193,6 +193,8 @@ const handleAlertState = (appState: AppState): AppState => {
   const shouldAlert = Date.now() - appState.lastBeepAt > 3_000
 
   if (!shouldAlert) {
+    // Between alerts: keep title at WAITING to maintain visibility
+    document.title = 'WAITING!'
     return appState
   }
 
