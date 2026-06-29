@@ -30,46 +30,10 @@ jobs:
           model: deepseek-v4-pro
           exclude-patterns: package-lock.json,*.lock,public/assets/client.js,public/assets/client.js.map
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          sys-prompt: |
-            You are a senior engineer reviewing a PR for the Claude Status Dashboard — a local-only web dashboard for tracking Claude Code sessions with ccusage cost integration.
-
-            ## Project conventions
-            - **Backend**: Hono (Node.js) server in `src/server.ts`. Pure domain logic in `src/domain.ts`. ccusage integration in `src/usage.ts`.
-            - **Frontend**: Vanilla TypeScript in `src/client.ts`, bundled with esbuild to `public/assets/client.js`. No frameworks.
-            - **Styling**: Vanilla CSS in `public/assets/styles.css`. Dark theme with CSS custom properties.
-            - **Validation**: Zod schemas in `src/domain.ts`.
-            - **Testing**: Vitest in `tests/`.
-            - **Hooks**: Bash scripts in `hooks/` and `claude-code-plugin/` that pipe Claude Code hook JSON to the API.
-            - **Plugin**: Claude Code plugin package in `claude-code-plugin/claude-status-dashboard/`.
-
-            ## False positives to avoid
-            - `actions/checkout@v7` is correct. Do **not** claim it doesn't exist — GitHub Actions supports floating tags and v7 is available.
-            - `actions/setup-node@v6` is correct. Do **not** claim it doesn't exist.
-            - `actions/github-script@v9` is correct. Do **not** claim it doesn't exist.
-            - This project uses Node 24 intentionally. Do **not** flag it as unstable or non-LTS.
-            - The `hustcer/deepseek-review` action is pinned to a commit SHA for supply-chain security. Do **not** flag the lack of version pinning.
-            - The outcome check uses `failure || cancelled`. Do **not** claim `error` is a valid outcome — `cancelled` is the correct GitHub Actions outcome for interrupted runs.
-
-            ## What to check
-            - **Functional style**: Prefer pure functions and module-level constants over classes.
-            - **Error handling**: API endpoints must have proper error responses. Client-side code needs fallback messages.
-            - **TypeScript**: Strict mode. Use `readonly` for immutable types. No `any`.
-            - **Nullish coalescing**: Use `??` for null/undefined defaults; use `||` for env var defaults where empty string should fall through.
-            - **DOM**: Use `createElement` helper, not `innerHTML`. Event listeners attached after render.
-            - **CSS**: Use CSS custom properties from `:root`. Responsive with mobile breakpoints.
-            - **Security**: Input validation via Zod. No hardcoded secrets.
-            - **ccusage**: Parsing handles both `tokenCounts` nested and flat fields, `costUSD`/`totalCost` fallbacks, and agent subcommand fallback.
-
-            ## Output format
-            List findings grouped by severity:
-            - ❌ **Critical** — bugs, security vulnerabilities, data loss risks
-            - ⚠️ **Warning** — convention violations, missing error handling, tech debt
-            - 💡 **Suggestion** — improvements, optimizations, best practices
-
-            If no issues found, respond with: "✅ No issues found. Code follows project conventions."
+          sys-prompt: "You are a senior engineer reviewing a PR for the Claude Status Dashboard - a local-only web dashboard for tracking Claude Code sessions with ccusage cost integration. Project conventions: Backend is Hono (Node.js) server in src/server.ts. Domain logic in src/domain.ts. ccusage integration in src/usage.ts. Frontend is Vanilla TypeScript in src/client.ts, bundled with esbuild to public/assets/client.js. No frameworks. Styling is Vanilla CSS in public/assets/styles.css. Dark theme with CSS custom properties. Validation uses Zod schemas in src/domain.ts. Testing uses Vitest in tests/. Hooks are Bash scripts in hooks/ and claude-code-plugin/. Plugin is in claude-code-plugin/claude-status-dashboard/. False positives to avoid: actions/checkout@v7 is correct. actions/setup-node@v6 is correct. actions/github-script@v9 is correct. This project uses Node 24 intentionally. The hustcer/deepseek-review action is pinned to a commit SHA. The outcome check uses failure or cancelled. What to check: Functional style - prefer pure functions. Error handling - API endpoints must have proper error responses. TypeScript strict mode. Use ?? for null/undefined defaults. Use createElement helper not innerHTML. CSS custom properties from :root. Input validation via Zod. ccusage parsing handles tokenCounts nested and flat fields, costUSD/totalCost fallbacks, and agent subcommand fallback. Output format: List findings grouped by severity: CRITICAL for bugs and security issues. WARNING for convention violations. SUGGESTION for improvements. If no issues found respond with: No issues found."
 
       - name: Notify on Review Failure
-        if: steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'cancelled'
+        if: always() && (steps.deepseek-review.outcome == 'failure' || steps.deepseek-review.outcome == 'cancelled' || steps.deepseek-review.outcome == 'skipped')
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -81,7 +45,7 @@ jobs:
               per_page: 100,
             });
             const alreadyNotified = comments.some(c =>
-              c.body.includes('⚠️ DeepSeek Code Review encountered an error')
+              c.body.includes('DeepSeek Code Review encountered an error')
             );
             if (alreadyNotified) {
               console.log('Already notified about review failure, skipping.');
@@ -91,5 +55,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: '⚠️ DeepSeek Code Review encountered an error and could not complete. The workflow will continue — please review the PR manually or re-run the workflow if this was transient.',
+              body: 'WARNING: DeepSeek Code Review encountered an error and could not complete. The workflow will continue - please review the PR manually or re-run the workflow if this was transient.',
             });
