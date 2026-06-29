@@ -107,6 +107,12 @@ h1 {
   font-size: 1.35rem;
 }
 
+.usage__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .usage__freshness,
 .usage p,
 .usage__block {
@@ -116,6 +122,34 @@ h1 {
 .usage__freshness {
   flex: 0 0 auto;
   font-size: 0.84rem;
+}
+
+.usage__windows {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.usage__window {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--muted);
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.usage__window:last-child {
+  border-right: 0;
+}
+
+.usage__window:hover,
+.usage__window--active {
+  background: #2b3440;
+  color: var(--text);
 }
 
 .usage__metrics {
@@ -318,6 +352,55 @@ h1 {
   font-size: 0.84rem;
 }
 
+.session-card__cost {
+  margin-bottom: 16px;
+}
+
+.session-card__cost .session-card__usage {
+  margin-bottom: 10px;
+}
+
+.session-card__daily {
+  display: grid;
+  gap: 7px;
+}
+
+.session-card__daily-row {
+  display: grid;
+  grid-template-columns: 48px minmax(48px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.session-card__daily-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.session-card__daily-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--bar-width);
+  border-radius: inherit;
+  background: var(--blue);
+}
+
+.session-card__daily-cost {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.session-card__daily-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .session-card__meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -362,8 +445,17 @@ h1 {
     flex-direction: column;
   }
 
+  .usage__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .usage__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage__window {
+    flex: 1 1 auto;
   }
 }
 

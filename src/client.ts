@@ -58,10 +58,13 @@ type UsageSummary = {
   readonly error: string | null
 }
 
+type CostWindow = 'today' | '7d' | '30d' | 'all'
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
   readonly usage: UsageSummary | null
+  readonly costWindow: CostWindow
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -88,6 +91,23 @@ const initialState: AppState = {
   audioEnabled: false,
   lastBeepAt: 0,
   usage: null,
+  costWindow: '7d',
+}
+
+const costWindowLabels: Record<CostWindow, string> = {
+  today: 'Today',
+  '7d': '7 days',
+  '30d': '30 days',
+  all: 'All',
+}
+
+const emptyTotals: UsageTotals = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheCreationTokens: 0,
+  cacheReadTokens: 0,
+  totalTokens: 0,
+  totalCost: 0,
 }
 
 let state = initialState
@@ -190,6 +210,57 @@ const formatMoney = (value: number): string =>
     maximumFractionDigits: 2,
   }).format(value)
 
+const localIsoDate = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): readonly UsageDay[] => {
+  if (costWindow === 'all') {
+    return days
+  }
+
+  if (costWindow === 'today') {
+    const today = localIsoDate(new Date())
+    return days.filter((day) => day.date === today)
+  }
+
+  const windowDays = costWindow === '7d' ? 7 : 30
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - (windowDays - 1))
+  const cutoffDate = localIsoDate(cutoff)
+
+  return days.filter((day) => day.date >= cutoffDate)
+}
+
+const sumUsageDays = (days: readonly UsageDay[]): UsageTotals =>
+  days.reduce(
+    (totals, day) => ({
+      inputTokens: totals.inputTokens + day.inputTokens,
+      outputTokens: totals.outputTokens + day.outputTokens,
+      cacheCreationTokens: totals.cacheCreationTokens + day.cacheCreationTokens,
+      cacheReadTokens: totals.cacheReadTokens + day.cacheReadTokens,
+      totalTokens: totals.totalTokens + day.totalTokens,
+      totalCost: totals.totalCost + day.totalCost,
+    }),
+    emptyTotals,
+  )
+
+const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
+  [...days]
+    .filter((day) => day.totalCost > 0 || day.totalTokens > 0)
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, 5)
+
+const formatDayLabel = (date: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(`${date}T00:00:00`))
+
 const normalizeProjectKey = (value: string): string =>
   value
     .toLowerCase()
@@ -218,21 +289,47 @@ const findUsageProject = (session: Session, usage: UsageSummary | null): UsagePr
   )
 }
 
-const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement =>
-  usageProject
-    ? createElement('div', { class: 'session-card__usage' }, [
+const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
+  if (!usageProject) {
+    return createElement('div', { class: 'session-card__usage session-card__usage--empty' }, [
+      createElement('span', {}, ['No ccusage project match']),
+    ])
+  }
+
+  const windowDays = daysForWindow(usageProject.days, state.costWindow)
+  const totals = sumUsageDays(windowDays)
+  const recentDays = recentUsageDays(windowDays)
+  const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
+
+  return createElement('div', { class: 'session-card__cost' }, [
+    createElement('div', { class: 'session-card__usage' }, [
         createElement('div', {}, [
-          createElement('span', {}, ['Session cost']),
-          createElement('strong', {}, [formatMoney(usageProject.today?.totalCost ?? usageProject.totals.totalCost)]),
+          createElement('span', {}, [`Cost · ${costWindowLabels[state.costWindow]}`]),
+          createElement('strong', {}, [formatMoney(totals.totalCost)]),
         ]),
         createElement('div', {}, [
           createElement('span', {}, ['Tokens']),
-          createElement('strong', {}, [formatNumber(usageProject.today?.totalTokens ?? usageProject.totals.totalTokens)]),
+          createElement('strong', {}, [formatNumber(totals.totalTokens)]),
         ]),
-      ])
-    : createElement('div', { class: 'session-card__usage session-card__usage--empty' }, [
-        createElement('span', {}, ['No ccusage project match']),
-      ])
+      ]),
+    recentDays.length === 0
+      ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage in this window'])
+      : createElement(
+          'div',
+          { class: 'session-card__daily', 'aria-label': `Daily ${usageProject.project} usage` },
+          recentDays.map((day) =>
+            createElement('div', { class: 'session-card__daily-row' }, [
+              createElement('span', { class: 'session-card__daily-date' }, [formatDayLabel(day.date)]),
+              createElement('span', {
+                class: 'session-card__daily-bar',
+                style: `--bar-width: ${maxCost > 0 ? Math.max(4, Math.round((day.totalCost / maxCost) * 100)) : 0}%`,
+              }),
+              createElement('span', { class: 'session-card__daily-cost' }, [formatMoney(day.totalCost)]),
+            ]),
+          ),
+        ),
+  ])
+}
 
 const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
@@ -282,6 +379,21 @@ const usageMetric = (label: string, value: string): HTMLElement =>
     createElement('strong', {}, [value]),
   ])
 
+const renderCostWindowControls = (): HTMLElement =>
+  createElement('div', { class: 'usage__windows', role: 'group', 'aria-label': 'Cost timeframe' }, [
+    ...(['today', '7d', '30d', 'all'] as const).map((costWindow) =>
+      createElement(
+        'button',
+        {
+          class: `usage__window${state.costWindow === costWindow ? ' usage__window--active' : ''}`,
+          type: 'button',
+          'data-cost-window': costWindow,
+        },
+        [costWindowLabels[costWindow]],
+      ),
+    ),
+  ])
+
 const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   if (!usage) {
     return createElement('section', { class: 'usage usage--loading', 'aria-label': 'Claude usage' }, [
@@ -305,7 +417,10 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
         createElement('p', { class: 'usage__eyebrow' }, ['ccusage']),
         createElement('h2', {}, ['Claude usage']),
       ]),
-      createElement('span', { class: 'usage__freshness' }, [`Updated ${formatRelative(usage.generatedAt)}`]),
+      createElement('div', { class: 'usage__actions' }, [
+        renderCostWindowControls(),
+        createElement('span', { class: 'usage__freshness' }, [`Updated ${formatRelative(usage.generatedAt)}`]),
+      ]),
     ]),
     createElement('div', { class: 'usage__metrics' }, [
       usageMetric('Today cost', formatMoney(usage.today?.totalCost ?? 0)),
@@ -359,6 +474,13 @@ const render = (): void => {
   document.querySelector('#audio-toggle')?.addEventListener('click', () => {
     state = { ...state, audioEnabled: !state.audioEnabled }
     render()
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state = { ...state, costWindow: button.dataset.costWindow as CostWindow }
+      render()
+    })
   })
 }
 
