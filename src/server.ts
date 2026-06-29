@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
+import { fetchUsageSummary, type UsageSummary } from './usage.js'
 
 type AppState = {
   readonly sessions: SessionStore
@@ -27,6 +28,8 @@ const staticRoot = fileURLToPath(new URL('../public', import.meta.url))
 const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
+const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000', 10)
+let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
   const body = await request.json().catch(() => {
@@ -52,6 +55,20 @@ app.get('/api/sessions', (context) =>
     redAlertAfterMs,
   }),
 )
+
+app.get('/api/usage', async (context) => {
+  if (usageCache && Date.now() < usageCache.expiresAt) {
+    return context.json(usageCache.summary)
+  }
+
+  const summary = await fetchUsageSummary()
+  usageCache = {
+    expiresAt: Date.now() + usageCacheTtlMs,
+    summary,
+  }
+
+  return context.json(summary)
+})
 
 app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)

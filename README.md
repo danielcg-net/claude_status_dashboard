@@ -2,6 +2,8 @@
 
 Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks can register sessions and push status changes to the API exposed by the Docker container.
 
+The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
+
 ## Statuses
 
 - `green`: Claude has finished running something.
@@ -18,7 +20,24 @@ Open [http://localhost:8787](http://localhost:8787).
 
 The app stores session state in memory. Restarting the container clears the dashboard.
 
+By default, Compose mounts your host Claude Code config directory into the container:
+
+```yaml
+volumes:
+  - "${HOME}/.claude:/claude:ro"
+environment:
+  CLAUDE_CONFIG_DIR: "/claude"
+```
+
+If your Claude Code logs live somewhere else, change the volume source and keep `CLAUDE_CONFIG_DIR` pointed at the mounted path.
+
 ## API
+
+Read `ccusage` totals:
+
+```bash
+curl http://localhost:8787/api/usage
+```
 
 Register or update a session:
 
@@ -82,6 +101,26 @@ Configure the threshold in `compose.yml`:
 environment:
   RED_ALERT_AFTER_MS: "300000"
 ```
+
+## ccusage
+
+Usage metrics are refreshed through the server every `USAGE_CACHE_TTL_MS` milliseconds. The browser polls `/api/usage` every 30 seconds.
+
+The app runs:
+
+```bash
+ccusage claude daily --json
+ccusage claude blocks --json
+```
+
+If the installed `ccusage` version does not support the agent subcommand form, the adapter falls back to:
+
+```bash
+ccusage daily --json
+ccusage blocks --json
+```
+
+If the usage panel says data is unavailable, check that the container can read Claude logs and that `CLAUDE_CONFIG_DIR` points to the mounted directory.
 
 ## Local Development
 

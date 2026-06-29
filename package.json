@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
+    "ccusage": "^20.0.14",
     "hono": "^4.8.4",
     "zod": "^3.25.67"
   },

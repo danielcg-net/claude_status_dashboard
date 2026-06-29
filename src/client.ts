@@ -15,9 +15,44 @@ type ApiState = {
   readonly redAlertAfterMs: number
 }
 
+type UsageTotals = {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheCreationTokens: number
+  readonly cacheReadTokens: number
+  readonly totalTokens: number
+  readonly totalCost: number
+}
+
+type UsageDay = UsageTotals & {
+  readonly date: string
+  readonly modelsUsed: readonly string[]
+}
+
+type UsageBlock = {
+  readonly id: string
+  readonly startTime: string
+  readonly endTime: string
+  readonly actualEndTime: string | null
+  readonly isActive: boolean
+  readonly totalTokens: number
+  readonly totalCost: number
+  readonly modelsUsed: readonly string[]
+}
+
+type UsageSummary = {
+  readonly available: boolean
+  readonly generatedAt: string
+  readonly totals: UsageTotals
+  readonly today: UsageDay | null
+  readonly activeBlock: UsageBlock | null
+  readonly error: string | null
+}
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
+  readonly usage: UsageSummary | null
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -43,6 +78,7 @@ const initialState: AppState = {
   redAlertAfterMs: 300_000,
   audioEnabled: false,
   lastBeepAt: 0,
+  usage: null,
 }
 
 let state = initialState
@@ -116,6 +152,8 @@ const apiFetch = async <T>(path: string, options?: RequestInit): Promise<T> => {
 
 const loadState = async (): Promise<ApiState> => apiFetch<ApiState>('/api/sessions')
 
+const loadUsage = async (): Promise<UsageSummary> => apiFetch<UsageSummary>('/api/usage')
+
 const createElement = <K extends keyof HTMLElementTagNameMap>(
   tagName: K,
   attributes: Record<string, string> = {},
@@ -163,6 +201,76 @@ const renderSession = (session: Session): HTMLElement => {
   return card
 }
 
+const formatNumber = (value: number): string => new Intl.NumberFormat().format(value)
+
+const formatMoney = (value: number): string =>
+  new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(value)
+
+const formatDateLabel = (isoDate: string): string => {
+  if (!isoDate) {
+    return 'No active block'
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(isoDate))
+}
+
+const usageMetric = (label: string, value: string): HTMLElement =>
+  createElement('div', { class: 'usage__metric' }, [
+    createElement('span', {}, [label]),
+    createElement('strong', {}, [value]),
+  ])
+
+const renderUsage = (usage: UsageSummary | null): HTMLElement => {
+  if (!usage) {
+    return createElement('section', { class: 'usage usage--loading', 'aria-label': 'Claude usage' }, [
+      createElement('h2', {}, ['Claude usage']),
+      createElement('p', {}, ['Loading ccusage data...']),
+    ])
+  }
+
+  if (!usage.available) {
+    return createElement('section', { class: 'usage usage--unavailable', 'aria-label': 'Claude usage' }, [
+      createElement('h2', {}, ['Claude usage']),
+      createElement('p', {}, ['ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.']),
+    ])
+  }
+
+  const activeBlock = usage.activeBlock
+
+  return createElement('section', { class: 'usage', 'aria-label': 'Claude usage' }, [
+    createElement('div', { class: 'usage__header' }, [
+      createElement('div', {}, [
+        createElement('p', { class: 'usage__eyebrow' }, ['ccusage']),
+        createElement('h2', {}, ['Claude usage']),
+      ]),
+      createElement('span', { class: 'usage__freshness' }, [`Updated ${formatRelative(usage.generatedAt)}`]),
+    ]),
+    createElement('div', { class: 'usage__metrics' }, [
+      usageMetric('Today cost', formatMoney(usage.today?.totalCost ?? 0)),
+      usageMetric('Today tokens', formatNumber(usage.today?.totalTokens ?? 0)),
+      usageMetric('Total cost', formatMoney(usage.totals.totalCost)),
+      usageMetric('Total tokens', formatNumber(usage.totals.totalTokens)),
+    ]),
+    createElement('div', { class: 'usage__block' }, [
+      createElement('span', { class: activeBlock ? 'usage__block-dot usage__block-dot--active' : 'usage__block-dot' }),
+      createElement('span', {}, [
+        activeBlock
+          ? `Active block ${formatDateLabel(activeBlock.startTime)}-${formatDateLabel(activeBlock.endTime)} · ${formatMoney(
+              activeBlock.totalCost,
+            )} · ${formatNumber(activeBlock.totalTokens)} tokens`
+          : 'No active usage block reported',
+      ]),
+    ]),
+  ])
+}
+
 const render = (): void => {
   root.replaceChildren(
     createElement('main', { class: 'shell' }, [
@@ -175,6 +283,7 @@ const render = (): void => {
           state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
         ]),
       ]),
+      renderUsage(state.usage),
       createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
         ...(['green', 'orange', 'red'] as const).map((status) =>
           createElement('div', { class: `summary__item summary__item--${status}` }, [
@@ -208,6 +317,16 @@ const refresh = async (): Promise<void> => {
   }
 }
 
+const refreshUsage = async (): Promise<void> => {
+  try {
+    const usage = await loadUsage()
+    state = { ...state, usage }
+    render()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext
@@ -216,4 +335,6 @@ declare global {
 
 render()
 void refresh()
+void refreshUsage()
 window.setInterval(() => void refresh(), 2_000)
+window.setInterval(() => void refreshUsage(), 30_000)
