@@ -101,7 +101,7 @@ claude plugin install claude-status-dashboard@claude-status-dashboard --scope us
 Publish install after this repo exists on GitHub:
 
 ```bash
-claude plugin marketplace add danielcg-net/claude-status-dashboard --sparse claude-code-plugin --scope user
+claude plugin marketplace add danielcg-net/claude_status_dashboard --sparse claude-code-plugin --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```
 
@@ -153,4 +153,4 @@ Then open [http://localhost:8787](http://localhost:8787).
 
 ## Publish Target
 
-This directory is initialized as a git repository and is ready to push to a public `danielcg-net` repository.
+This repository is published at [danielcg-net/claude_status_dashboard](https://github.com/danielcg-net/claude_status_dashboard).

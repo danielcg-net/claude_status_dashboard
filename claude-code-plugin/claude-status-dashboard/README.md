@@ -83,6 +83,6 @@ docker compose up --build
 After publishing this repository, users can add the GitHub repo as a marketplace. Because this repo stores the marketplace under `claude-code-plugin`, use sparse checkout:
 
 ```bash
-claude plugin marketplace add danielcg-net/claude-status-dashboard --sparse claude-code-plugin --scope user
+claude plugin marketplace add danielcg-net/claude_status_dashboard --sparse claude-code-plugin --scope user
 claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
 ```

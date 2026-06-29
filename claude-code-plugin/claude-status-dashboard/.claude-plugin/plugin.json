@@ -5,8 +5,8 @@
   "author": {
     "name": "danielcg-net"
   },
-  "homepage": "https://github.com/danielcg-net/claude-status-dashboard",
-  "repository": "https://github.com/danielcg-net/claude-status-dashboard.git",
+  "homepage": "https://github.com/danielcg-net/claude_status_dashboard",
+  "repository": "https://github.com/danielcg-net/claude_status_dashboard.git",
   "license": "MIT",
   "keywords": [
     "claude-code",
