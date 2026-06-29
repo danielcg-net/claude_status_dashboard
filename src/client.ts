@@ -177,8 +177,8 @@ const flashTitle = (): void => {
 const tryFocus = (): void => {
   try {
     window.focus()
-  } catch {
-    // Browser may block focus without user gesture
+  } catch (error) {
+    console.debug('Could not focus dashboard tab:', error)
   }
 }
 
@@ -313,7 +313,8 @@ const shortProjectName = (projectKey: string): string => {
   // ccusage keys look like: -Users-name-Private-Projects-dir-name
   // or -Users-name-dir-name. Find the last known path prefix and
   // take everything after it. This preserves dashes in dir names.
-  const prefixes = ['-Private-Projects-', '-Projects-', '-work-', '-src-', '-app-']
+  // Only use long, specific prefixes to avoid false positives.
+  const prefixes = ['-Private-Projects-', '-Projects-']
   let best = -1
   let bestPrefix = ''
   for (const prefix of prefixes) {
@@ -326,7 +327,7 @@ const shortProjectName = (projectKey: string): string => {
   if (best >= 0) {
     return projectKey.slice(best + bestPrefix.length)
   }
-  // Fallback: take the last segment (works for simple cases)
+  // Fallback: take the last segment (works for simple cases like -Users-name-repo)
   const parts = projectKey.split('-').filter(Boolean)
   return parts[parts.length - 1] ?? projectKey
 }
