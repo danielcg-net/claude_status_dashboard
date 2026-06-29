@@ -629,6 +629,13 @@ h1 {
   color: var(--red);
 }
 
+.repo-card__exclude:focus-visible {
+  opacity: 1;
+  border-color: var(--blue);
+  color: var(--blue);
+  outline: none;
+}
+
 /* ── Excluded repos (collapsible, inside usage card) ── */
 
 .excluded-details {
@@ -687,6 +694,11 @@ h1 {
 .excluded-details__tag button:hover {
   background: var(--red);
   color: var(--text);
+}
+
+.excluded-details__tag button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
 .repo-explorer__all-excluded {

@@ -370,17 +370,36 @@ const projectCandidatesFor = (session: Session): readonly string[] =>
     .filter((value): value is string => Boolean(value))
     .flatMap((value) => [value, normalizeProjectKey(value)])
 
-const findUsageProjectUnfiltered = (session: Session, usage: UsageSummary): UsageProject | null => {
-  const projects = Object.values(usage.projects)
-  const candidates = new Set(projectCandidatesFor(session))
+// Build a lookup map from session candidates to project for the current usage data.
+// Used by both isSessionExcluded and findUsageProject to avoid O(sessions x projects).
+let projectLookupCache: { readonly usageKey: string; readonly map: ReadonlyMap<string, UsageProject> } | null = null
 
-  return (
-    projects.find((project) => candidates.has(project.project) || candidates.has(normalizeProjectKey(project.project))) ??
-    projects.find((project) =>
-      [...candidates].some((candidate) => normalizeProjectKey(project.project).endsWith(candidate)),
-    ) ??
-    null
-  )
+const buildProjectLookup = (usage: UsageSummary): ReadonlyMap<string, UsageProject> => {
+  const cacheKey = Object.keys(usage.projects).sort().join(',')
+  if (projectLookupCache?.usageKey === cacheKey) return projectLookupCache.map
+  const map = new Map<string, UsageProject>()
+  for (const project of Object.values(usage.projects)) {
+    map.set(project.project, project)
+    map.set(normalizeProjectKey(project.project), project)
+  }
+  projectLookupCache = { usageKey: cacheKey, map }
+  return map
+}
+
+const findUsageProjectUnfiltered = (session: Session, usage: UsageSummary): UsageProject | null => {
+  const lookup = buildProjectLookup(usage)
+  const candidates = projectCandidatesFor(session)
+  for (const candidate of candidates) {
+    const match = lookup.get(candidate)
+    if (match) return match
+  }
+  // Fallback: suffix match
+  for (const candidate of candidates) {
+    for (const key of lookup.keys()) {
+      if (key.endsWith(candidate)) return lookup.get(key) ?? null
+    }
+  }
+  return null
 }
 
 const isSessionExcluded = (session: Session): boolean => {
@@ -389,13 +408,8 @@ const isSessionExcluded = (session: Session): boolean => {
     const project = findUsageProjectUnfiltered(session, state.usage)
     if (project && state.excludedRepos.has(project.project)) return true
   }
-  // Fallback: match session.usageProject against excluded keys
-  if (!session.usageProject) return false
-  for (const key of state.excludedRepos) {
-    if (key === session.usageProject) return true
-    if (key.endsWith(`-${session.usageProject}`)) return true
-    if (shortProjectName(key) === session.usageProject) return true
-  }
+  // Fallback: match session.usageProject against excluded keys by exact match only
+  if (session.usageProject && state.excludedRepos.has(session.usageProject)) return true
   return false
 }
 
