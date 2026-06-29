@@ -312,7 +312,12 @@ const sumUsageDays = (days: readonly UsageDay[]): UsageTotals =>
   )
 
 const usageDaysForWindow = (usage: UsageSummary, costWindow: CostWindow): readonly UsageDay[] =>
-  daysForWindow(Object.values(usage.projects).flatMap((project) => project.days), costWindow)
+  daysForWindow(
+    Object.values(usage.projects)
+      .filter((project) => !state.excludedRepos.has(project.project))
+      .flatMap((project) => project.days),
+    costWindow,
+  )
 
 const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
   [...days]
@@ -368,7 +373,7 @@ const findUsageProject = (session: Session, usage: UsageSummary | null): UsagePr
     return null
   }
 
-  const projects = Object.values(usage.projects)
+  const projects = Object.values(usage.projects).filter((p) => !state.excludedRepos.has(p.project))
   const candidates = new Set(projectCandidatesFor(session))
 
   return (
@@ -517,7 +522,12 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
     createElement('div', { class: 'usage__metrics' }, [
       usageMetric(`Cost · ${costWindowLabels[state.costWindow]}`, formatMoney(windowTotals.totalCost)),
       usageMetric(`Tokens · ${costWindowLabels[state.costWindow]}`, formatNumber(windowTotals.totalTokens)),
-      usageMetric('Matched repos', formatNumber(Object.keys(usage.projects).length)),
+      usageMetric(
+        'Matched repos',
+        state.excludedRepos.size > 0
+          ? `${formatNumber(Object.keys(usage.projects).length - state.excludedRepos.size)}/${formatNumber(Object.keys(usage.projects).length)}`
+          : formatNumber(Object.keys(usage.projects).length),
+      ),
       usageMetric('Active block', activeBlock ? formatMoney(activeBlock.totalCost) : 'None'),
     ]),
     createElement('div', { class: 'usage__block' }, [
