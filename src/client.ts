@@ -65,6 +65,7 @@ type AppState = ApiState & {
   readonly lastBeepAt: number
   readonly usage: UsageSummary | null
   readonly costWindow: CostWindow
+  readonly selectedRepo: string | null
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -92,6 +93,7 @@ const initialState: AppState = {
   lastBeepAt: 0,
   usage: null,
   costWindow: 'today',
+  selectedRepo: null,
 }
 
 const costWindowLabels: Record<CostWindow, string> = {
@@ -460,6 +462,174 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   ])
 }
 
+const renderRepoCard = (project: UsageProject): HTMLElement => {
+  const windowDays = daysForWindow(project.days, state.costWindow)
+  const totals = sumUsageDays(windowDays)
+  const recentDays = recentUsageDays(windowDays)
+  const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
+  const isSelected = state.selectedRepo === project.project
+
+  return createElement('article', {
+    class: `repo-card${isSelected ? ' repo-card--selected' : ''}`,
+    'data-repo': project.project,
+  }, [
+    createElement('div', { class: 'repo-card__header' }, [
+      createElement('h3', { class: 'repo-card__name' }, [project.project]),
+      createElement('span', { class: 'repo-card__cost' }, [formatMoney(totals.totalCost)]),
+    ]),
+    createElement('div', { class: 'repo-card__metrics' }, [
+      createElement('div', {}, [
+        createElement('span', {}, ['Tokens']),
+        createElement('strong', {}, [formatNumber(totals.totalTokens)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Days']),
+        createElement('strong', {}, [String(windowDays.length)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Input']),
+        createElement('strong', {}, [formatNumber(totals.inputTokens)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Output']),
+        createElement('strong', {}, [formatNumber(totals.outputTokens)]),
+      ]),
+    ]),
+    recentDays.length === 0
+      ? createElement('div', { class: 'repo-card__daily-empty' }, ['No usage in this window'])
+      : createElement(
+          'div',
+          { class: 'repo-card__daily', 'aria-label': `Daily ${project.project} usage` },
+          recentDays.map((day) =>
+            createElement('div', { class: 'repo-card__daily-row' }, [
+              createElement('span', { class: 'repo-card__daily-date' }, [formatDayLabel(day.date)]),
+              createElement('span', {
+                class: 'repo-card__daily-bar',
+                style: `--bar-width: ${maxCost > 0 ? Math.max(4, Math.round((day.totalCost / maxCost) * 100)) : 0}%`,
+              }),
+              createElement('span', { class: 'repo-card__daily-cost' }, [formatMoney(day.totalCost)]),
+            ]),
+          ),
+        ),
+  ])
+}
+
+const renderRepoDetail = (project: UsageProject): HTMLElement => {
+  const windowDays = daysForWindow(project.days, state.costWindow)
+  const totals = sumUsageDays(windowDays)
+  const allDays = [...windowDays]
+    .filter((day) => day.totalCost > 0 || day.totalTokens > 0)
+    .sort((left, right) => right.date.localeCompare(left.date))
+  const maxCost = Math.max(...allDays.map((day) => day.totalCost), 0)
+
+  return createElement('section', { class: 'repo-detail', 'aria-label': `${project.project} cost detail` }, [
+    createElement('div', { class: 'repo-detail__header' }, [
+      createElement('button', {
+        class: 'repo-detail__back',
+        type: 'button',
+        'data-repo-back': '',
+      }, ['← All repos']),
+      createElement('div', {}, [
+        createElement('h2', {}, [project.project]),
+        createElement('p', { class: 'repo-detail__subtitle' }, [
+          `${formatMoney(totals.totalCost)} · ${formatNumber(totals.totalTokens)} tokens · ${allDays.length} days`,
+        ]),
+      ]),
+    ]),
+    createElement('div', { class: 'repo-detail__metrics' }, [
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, [`Cost · ${costWindowLabels[state.costWindow]}`]),
+        createElement('strong', {}, [formatMoney(totals.totalCost)]),
+      ]),
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, ['Input tokens']),
+        createElement('strong', {}, [formatNumber(totals.inputTokens)]),
+      ]),
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, ['Output tokens']),
+        createElement('strong', {}, [formatNumber(totals.outputTokens)]),
+      ]),
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, ['Cache creation']),
+        createElement('strong', {}, [formatNumber(totals.cacheCreationTokens)]),
+      ]),
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, ['Cache read']),
+        createElement('strong', {}, [formatNumber(totals.cacheReadTokens)]),
+      ]),
+      createElement('div', { class: 'usage__metric' }, [
+        createElement('span', {}, ['Total tokens']),
+        createElement('strong', {}, [formatNumber(totals.totalTokens)]),
+      ]),
+    ]),
+    allDays.length === 0
+      ? createElement('p', { class: 'repo-detail__empty' }, ['No usage in this window'])
+      : createElement(
+          'div',
+          { class: 'repo-detail__days', 'aria-label': `Daily breakdown for ${project.project}` },
+          allDays.map((day) =>
+            createElement('div', { class: 'repo-detail__day' }, [
+              createElement('div', { class: 'repo-detail__day-header' }, [
+                createElement('span', { class: 'repo-detail__day-date' }, [formatDayLabel(day.date)]),
+                createElement('span', { class: 'repo-detail__day-cost' }, [formatMoney(day.totalCost)]),
+              ]),
+              createElement('div', {
+                class: 'repo-detail__day-bar',
+                style: `--bar-width: ${maxCost > 0 ? Math.max(2, Math.round((day.totalCost / maxCost) * 100)) : 0}%`,
+              }),
+              createElement('div', { class: 'repo-detail__day-metrics' }, [
+                createElement('span', {}, [`${formatNumber(day.totalTokens)} tokens`]),
+                createElement('span', {}, [`${formatNumber(day.inputTokens)} in / ${formatNumber(day.outputTokens)} out`]),
+                day.modelsUsed.length > 0
+                  ? createElement('span', {}, [day.modelsUsed.join(', ')])
+                  : createElement('span', {}, ['—']),
+              ]),
+            ]),
+          ),
+        ),
+  ])
+}
+
+const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
+  const projects = Object.values(usage.projects)
+    .filter((project) => {
+      const windowDays = daysForWindow(project.days, state.costWindow)
+      return windowDays.some((day) => day.totalCost > 0 || day.totalTokens > 0)
+    })
+    .sort((left, right) => {
+      const leftTotals = sumUsageDays(daysForWindow(left.days, state.costWindow))
+      const rightTotals = sumUsageDays(daysForWindow(right.days, state.costWindow))
+      return rightTotals.totalCost - leftTotals.totalCost
+    })
+
+  if (projects.length === 0) {
+    return createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
+      createElement('h2', {}, ['Costs by repo']),
+      createElement('p', {}, ['No repo usage data available for the selected window.']),
+    ])
+  }
+
+  // If a repo is selected, show its detail view
+  if (state.selectedRepo) {
+    const selected = projects.find((p) => p.project === state.selectedRepo)
+    if (selected) {
+      return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
+        renderRepoDetail(selected),
+      ])
+    }
+  }
+
+  return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
+    createElement('div', { class: 'repo-explorer__header' }, [
+      createElement('h2', {}, ['Costs by repo']),
+      createElement('span', { class: 'repo-explorer__count' }, [
+        `${projects.length} repo${projects.length === 1 ? '' : 's'}`,
+      ]),
+    ]),
+    createElement('div', { class: 'repo-explorer__grid' }, projects.map(renderRepoCard)),
+  ])
+}
+
 const render = (): void => {
   root.replaceChildren(
     createElement('main', { class: 'shell' }, [
@@ -473,6 +643,10 @@ const render = (): void => {
         ]),
       ]),
       renderUsage(state.usage),
+      state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
+        createElement('h2', {}, ['Costs by repo']),
+        createElement('p', {}, ['ccusage data is not available.']),
+      ]),
       createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
         ...(['green', 'orange', 'red'] as const).map((status) =>
           createElement('div', { class: `summary__item summary__item--${status}` }, [
@@ -497,7 +671,21 @@ const render = (): void => {
 
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, costWindow: button.dataset.costWindow as CostWindow }
+      state = { ...state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLElement>('[data-repo]').forEach((card) => {
+    card.addEventListener('click', () => {
+      state = { ...state, selectedRepo: card.dataset.repo ?? null }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-repo-back]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state = { ...state, selectedRepo: null }
       render()
     })
   })
