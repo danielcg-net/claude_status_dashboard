@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const sessionStatuses = ['green', 'orange', 'red'] as const
+export const sessionStatuses = ['green', 'yellow', 'orange', 'red'] as const
 
 export const sessionStatusSchema = z.enum(sessionStatuses)
 

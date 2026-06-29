@@ -7,6 +7,7 @@ The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs
 ## Statuses
 
 - `green`: Claude has finished running something.
+- `yellow`: Claude is idle at the prompt, waiting for your input.
 - `orange`: Claude is thinking and doing stuff.
 - `red`: Claude is paused waiting for an approval or decision.
 
@@ -83,9 +84,10 @@ Yes, these can be configured globally in `~/.claude/settings.json`; they do not 
 
 Status mapping:
 
-- `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`: `orange`
-- `Notification`: `red`
-- `Stop`, `SubagentStop`: `green`
+- `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
+- `PreToolUse`, `PostToolUse`: `orange` (actively working)
+- `Notification`: `red` (needs attention)
+- `Stop`, `SubagentStop`: `green` (finished)
 
 ## Claude Code Plugin
 

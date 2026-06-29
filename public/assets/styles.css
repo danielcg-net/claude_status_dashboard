@@ -7,6 +7,7 @@
   --muted: #a8b0bd;
   --line: #343a44;
   --green: #3ddc84;
+  --yellow: #e8d44d;
   --orange: #f5a524;
   --red: #ff4d5e;
   --blue: #7db7ff;
@@ -233,6 +234,10 @@ h1 {
   color: var(--green);
 }
 
+.summary__item--yellow strong {
+  color: var(--yellow);
+}
+
 .summary__item--orange strong {
   color: var(--orange);
 }
@@ -263,6 +268,10 @@ h1 {
 
 .session-card--green {
   border-top: 4px solid var(--green);
+}
+
+.session-card--yellow {
+  border-top: 4px solid var(--yellow);
 }
 
 .session-card--orange {
@@ -297,6 +306,10 @@ h1 {
 
 .session-card--green .status-dot {
   color: var(--green);
+}
+
+.session-card--yellow .status-dot {
+  color: var(--yellow);
 }
 
 .session-card--orange .status-dot {

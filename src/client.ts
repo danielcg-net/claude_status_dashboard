@@ -1,4 +1,4 @@
-type SessionStatus = 'green' | 'orange' | 'red'
+type SessionStatus = 'green' | 'yellow' | 'orange' | 'red'
 
 type Session = {
   readonly id: string
@@ -70,12 +70,14 @@ type AppState = ApiState & {
 
 const statusLabels: Record<SessionStatus, string> = {
   green: 'Finished',
+  yellow: 'Idle',
   orange: 'Running',
   red: 'Waiting',
 }
 
 const statusDetails: Record<SessionStatus, string> = {
   green: 'Claude has finished running something.',
+  yellow: 'Claude is idle at the prompt, waiting for your input.',
   orange: 'Claude is thinking and doing stuff.',
   red: 'Claude is paused for an approval or decision.',
 }
@@ -648,7 +650,7 @@ const render = (): void => {
         createElement('p', {}, ['ccusage data is not available.']),
       ]),
       createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
-        ...(['green', 'orange', 'red'] as const).map((status) =>
+        ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
           createElement('div', { class: `summary__item summary__item--${status}` }, [
             createElement('span', {}, [statusLabels[status]]),
             createElement('strong', {}, [String(state.sessions.filter((session) => session.status === status).length)]),

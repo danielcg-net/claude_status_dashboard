@@ -38,6 +38,7 @@ const detailFor = () => {
 const statusFor = () => {
   if (event === 'Notification') return 'red'
   if (event === 'Stop' || event === 'SubagentStop') return 'green'
+  if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'yellow'
   return 'orange'
 }
 
