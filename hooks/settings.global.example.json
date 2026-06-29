@@ -72,6 +72,18 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{REPO_ROOT}}/hooks/claude-status-dashboard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "matcher": ".*",

@@ -7,7 +7,7 @@ These hooks are intended for your global Claude Code user settings, so every rep
 - `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
 - `PreToolUse`, `PostToolUse`: `orange` (actively working)
 - `Notification`: `red` (needs attention)
-- `Stop`, `SubagentStop`: `green` (finished)
+- `Stop`, `StopFailure`, `SubagentStop`: `green` (finished)
 
 The hook command reads Claude Code hook JSON from stdin and sends a `POST /api/sessions` request. The dashboard treats repeated `POST` calls with the same `session_id` as updates.
 

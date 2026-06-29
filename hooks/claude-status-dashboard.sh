@@ -31,13 +31,14 @@ const detailFor = () => {
   if (event === 'PostToolUse' && toolName) return `Claude used ${toolName}`
   if (event === 'Notification') return 'Claude needs attention'
   if (event === 'Stop') return reason ? `Claude stopped: ${reason}` : 'Claude finished running'
+  if (event === 'StopFailure') return reason ? `Claude stopped with error: ${reason}` : 'Claude stopped with an error'
   if (event === 'SubagentStop') return reason ? `Subagent stopped: ${reason}` : 'Subagent finished running'
   return `Claude event: ${event}`
 }
 
 const statusFor = () => {
   if (event === 'Notification') return 'red'
-  if (event === 'Stop' || event === 'SubagentStop') return 'green'
+  if (event === 'Stop' || event === 'StopFailure' || event === 'SubagentStop') return 'green'
   if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'yellow'
   return 'orange'
 }
