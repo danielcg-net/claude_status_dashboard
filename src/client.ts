@@ -157,12 +157,21 @@ let state = initialState
 const millisecondsSince = (isoDate: string): number => {
   // The server sends UTC ISO timestamps. Parse as UTC and compare against local time.
   const utcMs = Date.parse(isoDate)
-  if (isNaN(utcMs)) return 0
+  if (isNaN(utcMs)) {
+    console.warn('millisecondsSince: invalid ISO date string', isoDate)
+    return 0
+  }
   return Date.now() - utcMs
 }
 
 const formatRelative = (isoDate: string): string => {
-  const seconds = Math.max(0, Math.floor(millisecondsSince(isoDate) / 1000))
+  const utcMs = Date.parse(isoDate)
+  if (isNaN(utcMs)) {
+    console.warn('formatRelative: invalid ISO date string', isoDate)
+    return 'unknown'
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - utcMs) / 1000))
   const minutes = Math.floor(seconds / 60)
 
   if (minutes >= 60) {
@@ -177,15 +186,21 @@ const formatRelative = (isoDate: string): string => {
 }
 
 // Format a UTC ISO timestamp as a local time string for tooltips / absolute display.
-const formatLocalTime = (isoDate: string): string =>
-  new Intl.DateTimeFormat(undefined, {
+const formatLocalTime = (isoDate: string): string => {
+  const utcMs = Date.parse(isoDate)
+  if (isNaN(utcMs)) {
+    console.warn('formatLocalTime: invalid ISO date string', isoDate)
+    return ''
+  }
+  return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
-  }).format(new Date(isoDate))
+  }).format(new Date(utcMs))
+}
 
 const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
   appState.sessions.filter(
@@ -343,9 +358,15 @@ const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
     .sort((left, right) => right.date.localeCompare(left.date))
     .slice(0, 5)
 
+const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/
+
 const formatDayLabel = (date: string): string => {
   // date is "YYYY-MM-DD" from ccusage. Parse parts to avoid UTC-to-local date shifts
   // (e.g. "2026-06-28" as UTC midnight becomes June 27 in negative-offset timezones).
+  if (!dateStringRegex.test(date)) {
+    console.warn('formatDayLabel: unexpected date format', date)
+    return date
+  }
   const parts = date.split('-')
   const year = Number(parts[0])
   const month = Number(parts[1])
