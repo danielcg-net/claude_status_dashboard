@@ -58,7 +58,7 @@ type UsageSummary = {
   readonly error: string | null
 }
 
-type CostWindow = 'today' | '7d' | '30d' | 'all'
+type CostWindow = 'today' | '2d' | '3d' | '7d' | '14d' | '30d' | '90d' | 'all'
 
 type AppState = ApiState & {
   readonly audioEnabled: boolean
@@ -91,14 +91,29 @@ const initialState: AppState = {
   audioEnabled: false,
   lastBeepAt: 0,
   usage: null,
-  costWindow: '7d',
+  costWindow: 'today',
 }
 
 const costWindowLabels: Record<CostWindow, string> = {
   today: 'Today',
+  '2d': '2 days',
+  '3d': '3 days',
   '7d': '7 days',
+  '14d': '14 days',
   '30d': '30 days',
+  '90d': '90 days',
   all: 'All',
+}
+
+const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
+
+const costWindowDays: Partial<Record<CostWindow, number>> = {
+  '2d': 2,
+  '3d': 3,
+  '7d': 7,
+  '14d': 14,
+  '30d': 30,
+  '90d': 90,
 }
 
 const emptyTotals: UsageTotals = {
@@ -228,7 +243,7 @@ const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): reado
     return days.filter((day) => day.date === today)
   }
 
-  const windowDays = costWindow === '7d' ? 7 : 30
+  const windowDays = costWindowDays[costWindow] ?? 1
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - (windowDays - 1))
   const cutoffDate = localIsoDate(cutoff)
@@ -381,7 +396,7 @@ const usageMetric = (label: string, value: string): HTMLElement =>
 
 const renderCostWindowControls = (): HTMLElement =>
   createElement('div', { class: 'usage__windows', role: 'group', 'aria-label': 'Cost timeframe' }, [
-    ...(['today', '7d', '30d', 'all'] as const).map((costWindow) =>
+    ...costWindowOrder.map((costWindow) =>
       createElement(
         'button',
         {

@@ -127,6 +127,7 @@ h1 {
 .usage__windows {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -136,6 +137,7 @@ h1 {
   min-height: 34px;
   border: 0;
   border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: var(--panel-strong);
   color: var(--muted);
   padding: 0 10px;

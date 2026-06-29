@@ -140,7 +140,7 @@ ccusage blocks --json
 
 If the usage panel says data is unavailable, check that the container can read Claude logs and that `CLAUDE_CONFIG_DIR` points to the mounted directory.
 
-Each session card displays cost/tokens from the matched `ccusage --instances` project. Use the timeframe selector to view today, 7 days, 30 days, or all history. Cards also show the most recent non-zero daily costs for the selected window.
+Each session card displays cost/tokens from the matched `ccusage --instances` project. The timeframe selector defaults to today and supports 2, 3, 7, 14, 30, 90 days, or all history. Cards also show the most recent non-zero daily costs for the selected window.
 
 For the cleanest match, send `usageProject` from your hook using the exact project key reported by `ccusage`.
 
