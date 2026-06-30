@@ -63,10 +63,18 @@ type CostWindow = 'today' | '2d' | '3d' | '7d' | '14d' | '30d' | '90d' | 'all'
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
+  readonly beepCount: number
+  readonly redAlertAfterOverrideMs: number | null
+  readonly maxBeeps: number | null
   readonly usage: UsageSummary | null
   readonly costWindow: CostWindow
   readonly selectedRepo: string | null
   readonly excludedRepos: ReadonlySet<string>
+}
+
+type AlertSettings = {
+  readonly redAlertAfterOverrideMs: number | null
+  readonly maxBeeps: number | null
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -110,11 +118,53 @@ const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
   }
 }
 
+const normalizeNonNegativeInteger = (value: unknown): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  const normalized = Math.floor(value)
+  return normalized >= 0 ? normalized : null
+}
+
+const normalizePositiveInteger = (value: unknown): number | null => {
+  const normalized = normalizeNonNegativeInteger(value)
+  return normalized !== null && normalized > 0 ? normalized : null
+}
+
+const loadAlertSettings = (): AlertSettings => {
+  try {
+    const raw = localStorage.getItem('alertSettings')
+    if (raw === null) {
+      return { redAlertAfterOverrideMs: null, maxBeeps: null }
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return {
+      redAlertAfterOverrideMs: normalizeNonNegativeInteger(parsed.redAlertAfterOverrideMs),
+      maxBeeps: normalizePositiveInteger(parsed.maxBeeps),
+    }
+  } catch (error) {
+    console.warn('Could not load alert settings from localStorage:', error)
+    return { redAlertAfterOverrideMs: null, maxBeeps: null }
+  }
+}
+
+const saveAlertSettings = (settings: AlertSettings): void => {
+  try {
+    localStorage.setItem('alertSettings', JSON.stringify(settings))
+  } catch (error) {
+    console.warn('Could not save alert settings to localStorage:', error)
+  }
+}
+
+const initialAlertSettings = loadAlertSettings()
+
 const initialState: AppState = {
   sessions: [],
   redAlertAfterMs: 300_000,
   audioEnabled: false,
   lastBeepAt: 0,
+  beepCount: 0,
+  redAlertAfterOverrideMs: initialAlertSettings.redAlertAfterOverrideMs,
+  maxBeeps: initialAlertSettings.maxBeeps,
   usage: null,
   costWindow: 'today',
   selectedRepo: null,
@@ -205,8 +255,14 @@ const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
   appState.sessions.filter((session) => {
     if (session.status !== 'red') return false
     const ms = millisecondsSince(session.statusSince)
-    return ms !== null && ms >= appState.redAlertAfterMs
+    return ms !== null && ms >= redAlertAfterMs(appState)
   })
+
+const redAlertAfterMs = (appState: AppState): number =>
+  appState.redAlertAfterOverrideMs ?? appState.redAlertAfterMs
+
+const redAlertAfterSeconds = (appState: AppState): number =>
+  Math.round(redAlertAfterMs(appState) / 1000)
 
 const originalTitle = document.title
 
@@ -242,6 +298,11 @@ const handleAlertState = (appState: AppState): AppState => {
 
   if (!appState.audioEnabled || !hasRed) {
     document.title = originalTitle
+    return appState.beepCount === 0 ? appState : { ...appState, beepCount: 0 }
+  }
+
+  if (appState.maxBeeps !== null && appState.beepCount >= appState.maxBeeps) {
+    document.title = 'WAITING!'
     return appState
   }
 
@@ -256,7 +317,7 @@ const handleAlertState = (appState: AppState): AppState => {
   flashTitle()
   tryFocus()
   beep()
-  return { ...appState, lastBeepAt: Date.now() }
+  return { ...appState, lastBeepAt: Date.now(), beepCount: appState.beepCount + 1 }
 }
 
 const apiFetch = async <T>(path: string, options?: RequestInit): Promise<T> => {
@@ -861,6 +922,38 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
   ])
 }
 
+const renderAlertControls = (): HTMLElement =>
+  createElement('div', { class: 'alert-controls', 'aria-label': 'Beep alert controls' }, [
+    createElement('label', { class: 'alert-controls__field' }, [
+      createElement('span', {}, ['Start after']),
+      createElement('input', {
+        id: 'alert-after-seconds',
+        type: 'number',
+        min: '0',
+        step: '1',
+        inputmode: 'numeric',
+        value: String(redAlertAfterSeconds(state)),
+      }),
+      createElement('span', { class: 'alert-controls__unit' }, ['sec']),
+    ]),
+    createElement('label', { class: 'alert-controls__field' }, [
+      createElement('span', {}, ['Stop after']),
+      createElement('input', {
+        id: 'max-beeps',
+        type: 'number',
+        min: '1',
+        step: '1',
+        inputmode: 'numeric',
+        placeholder: 'No limit',
+        value: state.maxBeeps === null ? '' : String(state.maxBeeps),
+      }),
+      createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
+    ]),
+    createElement('button', { id: 'audio-toggle', class: 'audio-toggle', type: 'button' }, [
+      state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
+    ]),
+  ])
+
 const render = (): void => {
   root.replaceChildren(
     createElement('main', { class: 'shell' }, [
@@ -869,9 +962,7 @@ const render = (): void => {
           createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
           createElement('h1', {}, ['Claude Session Dashboard']),
         ]),
-        createElement('button', { id: 'audio-toggle', class: 'audio-toggle', type: 'button' }, [
-          state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
-        ]),
+        renderAlertControls(),
       ]),
       renderUsage(state.usage),
       state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
@@ -918,6 +1009,34 @@ const render = (): void => {
 
   document.querySelector('#audio-toggle')?.addEventListener('click', () => {
     state = { ...state, audioEnabled: !state.audioEnabled }
+    render()
+  })
+
+  document.querySelector<HTMLInputElement>('#alert-after-seconds')?.addEventListener('change', (event) => {
+    const input = event.currentTarget as HTMLInputElement
+    const seconds = Math.max(0, Math.floor(input.valueAsNumber))
+    const redAlertAfterOverrideMs = Number.isFinite(seconds) ? seconds * 1000 : null
+    state = { ...state, redAlertAfterOverrideMs, lastBeepAt: 0, beepCount: 0 }
+    saveAlertSettings({
+      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
+      maxBeeps: state.maxBeeps,
+    })
+    render()
+  })
+
+  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
+    const input = event.currentTarget as HTMLInputElement
+    const maxBeeps = input.value.trim() === '' ? null : Math.max(1, Math.floor(input.valueAsNumber))
+    state = {
+      ...state,
+      maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : null,
+      lastBeepAt: 0,
+      beepCount: 0,
+    }
+    saveAlertSettings({
+      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
+      maxBeeps: state.maxBeeps,
+    })
     render()
   })
 

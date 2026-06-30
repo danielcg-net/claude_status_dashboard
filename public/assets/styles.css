@@ -81,6 +81,44 @@ h1 {
   border-color: var(--blue);
 }
 
+.alert-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.alert-controls__field {
+  display: grid;
+  grid-template-columns: minmax(92px, max-content) 84px max-content;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.alert-controls__field input {
+  width: 84px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+}
+
+.alert-controls__field input:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.alert-controls__unit {
+  min-width: 34px;
+}
+
 .usage {
   border: 1px solid var(--line);
   border-radius: 8px;
