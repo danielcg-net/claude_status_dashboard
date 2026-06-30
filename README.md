@@ -138,12 +138,17 @@ The browser can emit a quiet beep when any card remains **red** longer than `RED
 
 Browsers require a user gesture before audio can play, so click **Enable beeps** after opening the page.
 
-Configure the threshold in `compose.yml`:
+Configure the default threshold in `compose.yml`:
 
 ```yaml
 environment:
   RED_ALERT_AFTER_MS: "300000"
 ```
+
+The page also has browser-stored controls for:
+
+- `Start after`: how many seconds a card must remain red before beeping starts.
+- `Stop after`: how many beeps play before stopping. Leave it blank for no limit.
 
 ---
 
