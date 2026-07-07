@@ -118,13 +118,25 @@ app.use('/assets/*', serveStatic({ root: staticRoot }))
 app.use('/favicon.ico', serveStatic({ path: `${staticRoot}/favicon.ico` }))
 app.get('*', serveStatic({ path: `${staticRoot}/index.html` }))
 
-serve(
-  {
-    fetch: app.fetch,
-    port,
+export { app }
+
+// Exported for test isolation — resets sessions and usage cache.
+export const __resetForTests = (): void => {
+  state = { sessions: new Map() }
+  usageCache = null
+}
+
+const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts')
+
+if (isMain || process.env.NODE_ENV !== 'test') {
+  serve(
+    {
+      fetch: app.fetch,
+      port,
     hostname,
   },
   (info) => {
     console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
   },
 )
+}
