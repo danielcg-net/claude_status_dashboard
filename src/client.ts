@@ -65,6 +65,7 @@ type UsageSummary = {
   readonly today: UsageDay | null
   readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
+  readonly blocks: readonly UsageBlock[]
   readonly error: string | null
 }
 
@@ -455,6 +456,17 @@ const aggregateModelBreakdowns = (
     .map(([modelName, cost]) => ({ modelName, cost }))
 }
 
+const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
+  const sessionStart = parseIso(session.createdAt)
+  const sessionEnd = parseIso(session.updatedAt)
+  if (sessionStart === null || sessionEnd === null) return days
+
+  const startDate = localIsoDate(new Date(sessionStart))
+  const endDate = localIsoDate(new Date(sessionEnd))
+
+  return days.filter((day) => day.date >= startDate && day.date <= endDate)
+}
+
 const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/
 
 const formatDayLabel = (date: string): string => {
@@ -576,22 +588,25 @@ const findUsageProject = (session: Session, usage: UsageSummary | null): UsagePr
   )
 }
 
-const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
+const renderSessionUsage = (session: Session, usageProject: UsageProject | null): HTMLElement => {
   if (!usageProject) {
     return createElement('div', { class: 'session-card__usage session-card__usage--empty' }, [
       createElement('span', {}, ['No ccusage project match']),
     ])
   }
 
-  const windowDays = daysForWindow(usageProject.days, state.costWindow)
-  const totals = sumUsageDays(windowDays)
-  const recentDays = recentUsageDays(windowDays)
+  // Filter to only days within this session's time range, then show all of them.
+  // The global cost window applies to the usage summary and repo cards, not to
+  // individual session cards — sessions are already naturally time-bounded.
+  const sessionDays = filterDaysBySessionTimeRange(session, usageProject.days)
+  const totals = sumUsageDays(sessionDays)
+  const recentDays = recentUsageDays(sessionDays)
   const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
 
   return createElement('div', { class: 'session-card__cost' }, [
     createElement('div', { class: 'session-card__usage' }, [
         createElement('div', {}, [
-          createElement('span', {}, [`Cost · ${costWindowLabels[state.costWindow]}`]),
+          createElement('span', {}, ['Cost']),
           createElement('strong', {}, [formatMoney(totals.totalCost)]),
         ]),
         createElement('div', {}, [
@@ -600,7 +615,7 @@ const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
         ]),
       ]),
     ...(() => {
-      const models = aggregateModelBreakdowns(usageProject.days, state.costWindow)
+      const models = aggregateModelBreakdowns(sessionDays, 'all')
       if (models.length === 0) return [] as HTMLElement[]
       return [createElement('div', { class: 'session-card__models' },
         models.map((m) =>
@@ -611,7 +626,7 @@ const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
       )]
     })(),
     recentDays.length === 0
-      ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage in this window'])
+      ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage data'])
       : createElement(
           'div',
           { class: 'session-card__daily', 'aria-label': `Daily ${shortProjectName(usageProject.project)} usage` },
@@ -644,7 +659,7 @@ const renderSession = (session: Session): HTMLElement => {
     ]),
     createElement('h2', {}, [session.name]),
     createElement('p', { class: 'session-card__detail' }, [session.detail || statusDetails[session.status]]),
-    renderSessionUsage(usageProject),
+    renderSessionUsage(session, usageProject),
     createElement('dl', { class: 'session-card__meta' }, [
       createElement('div', {}, [
         createElement('dt', {}, ['Status since']),

@@ -144,6 +144,11 @@ describe('fetchUsageSummary', () => {
     expect(result.activeBlock).not.toBeNull()
     expect(result.activeBlock?.isActive).toBe(true)
     expect(result.activeBlock?.totalCost).toBe(0.01)
+    expect(result.blocks).toHaveLength(2)
+    expect(result.blocks[0]?.id).toBe('block-1')
+    expect(result.blocks[0]?.isActive).toBe(false)
+    expect(result.blocks[1]?.id).toBe('block-2')
+    expect(result.blocks[1]?.isActive).toBe(true)
   })
 
   it('handles ccusage failure gracefully', async () => {
