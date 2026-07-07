@@ -601,21 +601,36 @@ h1 {
 
 .model-breakdown__bars {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .model-breakdown__bar {
   display: grid;
-  grid-template-columns: minmax(36px, 1fr) auto;
-  align-items: center;
-  gap: 6px;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 6px;
   color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.model-breakdown__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.model-breakdown__cost {
+  color: var(--text);
+  font-weight: 600;
   font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .model-breakdown__bar-fill {
-  position: relative;
-  height: 6px;
+  grid-column: 1 / -1;
+  height: 4px;
+  margin-top: 1px;
   border-radius: 999px;
   background: var(--panel-strong);
   overflow: hidden;
@@ -623,27 +638,11 @@ h1 {
 
 .model-breakdown__bar-fill::after {
   content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
+  display: block;
+  height: 100%;
   width: var(--bar-width);
   border-radius: inherit;
-  background: var(--blue);
-}
-
-.model-breakdown__label {
-  position: absolute;
-  margin-top: 10px;
-  font-size: 0.68rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.model-breakdown__cost {
-  color: var(--text);
-  font-weight: 600;
-  font-size: 0.74rem;
-  white-space: nowrap;
+  background: var(--bar-color, var(--blue));
 }
 
 /* ── Session card model tags ── */

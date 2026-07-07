@@ -194,6 +194,8 @@ const costWindowLabels: Record<CostWindow, string> = {
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
 
+const MODEL_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#38bdf8', '#f87171'] as const
+
 const costWindowDays: Partial<Record<CostWindow, number>> = {
   '2d': 2,
   '3d': 3,
@@ -771,28 +773,39 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
         title: 'Exclude this repo from the dashboard',
       }, ['✕']),
     ]),
-    (() => {
+    createElement('div', { class: 'repo-card__metrics' }, [
+      createElement('div', {}, [
+        createElement('span', {}, ['Tokens']),
+        createElement('strong', {}, [formatNumber(totals.totalTokens)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Days']),
+        createElement('strong', {}, [String(windowDays.length)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Input']),
+        createElement('strong', {}, [formatNumber(totals.inputTokens)]),
+      ]),
+      createElement('div', {}, [
+        createElement('span', {}, ['Output']),
+        createElement('strong', {}, [formatNumber(totals.outputTokens)]),
+      ]),
+    ]),
+    ...(() => {
       const models = aggregateModelBreakdowns(project.days, state.costWindow)
-      if (models.length === 0) {
-        return createElement('div', { class: 'repo-card__metrics' }, [
-          createElement('div', {}, [
-            createElement('span', {}, ['Tokens']),
-            createElement('strong', {}, [formatNumber(totals.totalTokens)]),
-          ]),
-        ])
-      }
+      if (models.length === 0) return [] as HTMLElement[]
       const maxModelCost = Math.max(...models.map((m) => m.cost), 0)
-      return createElement('div', { class: 'model-breakdown' }, [
+      return [createElement('div', { class: 'model-breakdown' }, [
         createElement('div', { class: 'model-breakdown__bars' },
-          models.map((m) =>
+          models.map((m, i) =>
             createElement('div', { class: 'model-breakdown__bar' }, [
-              createElement('span', { class: 'model-breakdown__bar-fill', style: `--bar-width: ${maxModelCost > 0 ? Math.max(4, Math.round((m.cost / maxModelCost) * 100)) : 0}%` }),
               createElement('span', { class: 'model-breakdown__label' }, [m.modelName]),
               createElement('span', { class: 'model-breakdown__cost' }, [formatMoney(m.cost)]),
+              createElement('span', { class: 'model-breakdown__bar-fill', style: `--bar-width: ${maxModelCost > 0 ? Math.max(4, Math.round((m.cost / maxModelCost) * 100)) : 0}%; --bar-color: ${MODEL_COLORS[i % MODEL_COLORS.length]}` }),
             ]),
           ),
         ),
-      ])
+      ])]
     })(),
     recentDays.length === 0
       ? createElement('div', { class: 'repo-card__daily-empty' }, ['No usage in this window'])
