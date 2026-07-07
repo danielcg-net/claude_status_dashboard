@@ -1004,7 +1004,6 @@ const renderAlertControls = (): HTMLElement =>
       createElement('input', {
         id: 'max-beeps',
         type: 'number',
-        min: '1',
         step: '1',
         inputmode: 'numeric',
         placeholder: 'No limit',
@@ -1110,8 +1109,7 @@ const render = (): void => {
     render()
   })
 
-  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
-    const input = event.currentTarget as HTMLInputElement
+  const commitMaxBeeps = (input: HTMLInputElement): void => {
     const maxBeeps = input.value.trim() === '' ? null : Math.max(1, Math.floor(input.valueAsNumber))
     state = {
       ...state,
@@ -1124,6 +1122,18 @@ const render = (): void => {
       maxBeeps: state.maxBeeps,
     })
     render()
+  }
+
+  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
+    commitMaxBeeps(event.currentTarget as HTMLInputElement)
+  })
+
+  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('input', (event) => {
+    const input = event.currentTarget as HTMLInputElement
+    // Fire on clear — change event may not fire for empty number inputs.
+    if (input.value.trim() === '') {
+      commitMaxBeeps(input)
+    }
   })
 
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
