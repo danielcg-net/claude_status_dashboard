@@ -595,16 +595,18 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
     ])
   }
 
+  // Filter to only days within this session's time range, then show all of them.
+  // The global cost window applies to the usage summary and repo cards, not to
+  // individual session cards — sessions are already naturally time-bounded.
   const sessionDays = filterDaysBySessionTimeRange(session, usageProject.days)
-  const windowDays = daysForWindow(sessionDays, state.costWindow)
-  const totals = sumUsageDays(windowDays)
-  const recentDays = recentUsageDays(windowDays)
+  const totals = sumUsageDays(sessionDays)
+  const recentDays = recentUsageDays(sessionDays)
   const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
 
   return createElement('div', { class: 'session-card__cost' }, [
     createElement('div', { class: 'session-card__usage' }, [
         createElement('div', {}, [
-          createElement('span', {}, [`Cost · ${costWindowLabels[state.costWindow]}`]),
+          createElement('span', {}, ['Cost']),
           createElement('strong', {}, [formatMoney(totals.totalCost)]),
         ]),
         createElement('div', {}, [
@@ -613,7 +615,7 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
         ]),
       ]),
     ...(() => {
-      const models = aggregateModelBreakdowns(sessionDays, state.costWindow)
+      const models = aggregateModelBreakdowns(sessionDays, 'all')
       if (models.length === 0) return [] as HTMLElement[]
       return [createElement('div', { class: 'session-card__models' },
         models.map((m) =>
@@ -624,7 +626,7 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
       )]
     })(),
     recentDays.length === 0
-      ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage in this window'])
+      ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage data'])
       : createElement(
           'div',
           { class: 'session-card__daily', 'aria-label': `Daily ${shortProjectName(usageProject.project)} usage` },
