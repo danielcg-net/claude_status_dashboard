@@ -282,4 +282,25 @@ describe('fetchUsageSummary', () => {
     const result = await fetchUsageSummary()
     expect(result.activeBlock?.totalCost).toBe(0.015)
   })
+
+  it('handles modelBreakdowns with zero cost correctly', async () => {
+    const dailyWithZeroCost = {
+      daily: [{
+        date: '2026-06-01',
+        inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+        totalTokens: 0, totalCost: 0, modelsUsed: [],
+        modelBreakdowns: [
+          { modelName: 'free-model', cost: 0, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, costUSD: 0.05 },
+        ],
+      }],
+    }
+    mockExecFileAsync
+      .mockResolvedValueOnce({ stdout: JSON.stringify(dailyWithZeroCost) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+    const result = await fetchUsageSummary()
+    expect(result.today?.modelBreakdowns).toHaveLength(1)
+    expect(result.today?.modelBreakdowns[0]?.cost).toBe(0)
+    expect(result.today?.modelBreakdowns[0]?.modelName).toBe('free-model')
+  })
 })

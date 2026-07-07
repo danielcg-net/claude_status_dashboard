@@ -117,7 +117,7 @@ const breakdownFrom = (value: unknown): ModelBreakdown | null => {
 
   return {
     modelName: asString(value.modelName),
-    cost: asNumber(value.cost) || asNumber(value.costUSD),
+    cost: asNumber(value.cost ?? value.costUSD),
     inputTokens: readInputTokens(value),
     outputTokens: readOutputTokens(value),
     cacheCreationTokens: readCacheCreationTokens(value),
