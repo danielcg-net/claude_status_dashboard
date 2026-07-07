@@ -27,7 +27,5 @@ to invoke them explicitly.
 | `implement-plan` | Implementing a plan from `docs/plans/` — run `/implement-plan <plan-file>` |
 | `playwright-best-practices` | Writing or improving Playwright E2E tests |
 | `playwright-page-objects` | Structuring Playwright tests with POM |
-| `testing-patterns` | Writing Vitest unit tests, mock strategies, coverage |
-
 All code written in this project should conform to the standards in these skills
 and in [`AGENTS.md`](AGENTS.md).
