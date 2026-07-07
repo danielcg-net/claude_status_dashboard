@@ -364,7 +364,7 @@ const createElement = <K extends keyof HTMLElementTagNameMap>(
   Object.entries(attributes).forEach(([key, value]) => {
     if (value === undefined) return
     if (booleanAttrs.has(key)) {
-      ;(element as Record<string, unknown>)[key] = true
+      ;(element as Record<string, unknown>)[key] = value === 'true'
     } else {
       element.setAttribute(key, value)
     }
