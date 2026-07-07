@@ -55,6 +55,7 @@ export type UsageSummary = {
   readonly today: UsageDay | null
   readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
+  readonly blocks: readonly UsageBlock[]
   readonly error: string | null
 }
 
@@ -232,10 +233,13 @@ const projectsFromInstancesJson = (json: unknown): Readonly<Record<string, Usage
   )
 }
 
-const activeBlockFrom = (json: unknown): UsageBlock | null => {
+const allBlocksFrom = (json: unknown): readonly UsageBlock[] => {
   const records = isRecord(json) ? asArray(json.blocks ?? json.data) : asArray(json)
-  const blocks = records.map(blockFrom).filter((block): block is UsageBlock => block !== null)
+  return records.map(blockFrom).filter((block): block is UsageBlock => block !== null)
+}
 
+const activeBlockFrom = (json: unknown): UsageBlock | null => {
+  const blocks = allBlocksFrom(json)
   return blocks.find((block) => block.isActive) ?? null
 }
 
@@ -257,6 +261,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       today,
       projects: projectsFromInstancesJson(instancesJson),
       activeBlock: activeBlockFrom(blocksJson),
+      blocks: allBlocksFrom(blocksJson),
       error: null,
     }
   } catch (error) {
@@ -267,6 +272,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       today: null,
       projects: {},
       activeBlock: null,
+      blocks: [],
       error: error instanceof Error ? error.message : 'Unable to read ccusage data.',
     }
   }
