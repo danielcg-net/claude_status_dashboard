@@ -480,6 +480,19 @@ h1 {
   min-height: 220px;
 }
 
+.empty__snippet {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--panel-strong);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text);
+}
+
 /* ── Repo cost explorer ─────────────────────────────── */
 
 .repo-explorer {

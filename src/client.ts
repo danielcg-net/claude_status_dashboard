@@ -1053,7 +1053,30 @@ const render = (): void => {
       state.sessions.length === 0
         ? createElement('section', { class: 'empty' }, [
             createElement('h2', {}, ['No sessions registered']),
-            createElement('p', {}, ['Send a POST request to /api/sessions to add the first Claude Code session.']),
+            createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
+            createElement('pre', { class: 'empty__snippet' }, [
+              '{\n',
+              '  "hooks": {\n',
+              '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
+              '      "type": "command",\n',
+              '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+              '      "timeout": 5\n',
+              '    }] }],\n',
+              '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
+              '      "type": "command",\n',
+              '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+              '      "timeout": 5\n',
+              '    }] }]\n',
+              '  }\n',
+              '}',
+            ]),
+            createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
+            createElement('p', {}, ['Or test with curl:']),
+            createElement('pre', { class: 'empty__snippet' }, [
+              'curl -X POST http://localhost:8787/api/sessions \\\n',
+              '  -H "Content-Type: application/json" \\\n',
+              `  -d '{"name":"test","status":"orange"}'`,
+            ]),
           ])
         : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
             .filter((session) => {
