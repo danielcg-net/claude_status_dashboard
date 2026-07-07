@@ -743,7 +743,8 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
         activeBlock
           ? `Active block ${formatDateLabel(activeBlock.startTime)}-${formatDateLabel(activeBlock.endTime)} · ${formatMoney(
               activeBlock.totalCost,
-            )} · ${formatNumber(activeBlock.totalTokens)} tokens`
+            )} · ${formatNumber(activeBlock.totalTokens)} tokens` +
+            (activeBlock.modelsUsed.length > 0 ? ` · ${activeBlock.modelsUsed.join(', ')}` : '')
           : 'No active usage block reported',
       ]),
     ]),
