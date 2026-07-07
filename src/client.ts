@@ -461,8 +461,13 @@ const shortProjectName = (projectKey: string): string => {
   if (best >= 0) {
     return projectKey.slice(best + bestPrefix.length)
   }
-  // Fallback: take the last segment (works for simple cases like -Users-name-repo)
-  const parts = projectKey.split('-').filter(Boolean)
+  // Fallback: for Linux/macOS paths like -home-user-repo or -Users-name-repo,
+  // skip the system dir and username, take the rest.
+  const cleaned = projectKey.replace(/^-+/, '')
+  const parts = cleaned.split('-').filter(Boolean)
+  if (parts.length > 2 && (parts[0] === 'home' || parts[0] === 'Users')) {
+    return parts.slice(2).join('-')
+  }
   return parts[parts.length - 1] ?? projectKey
 }
 
