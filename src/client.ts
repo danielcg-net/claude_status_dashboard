@@ -1004,6 +1004,7 @@ const renderAlertControls = (): HTMLElement =>
       createElement('input', {
         id: 'max-beeps',
         type: 'number',
+        min: '1',
         step: '1',
         inputmode: 'numeric',
         placeholder: 'No limit',
@@ -1110,7 +1111,10 @@ const render = (): void => {
   })
 
   const commitMaxBeeps = (input: HTMLInputElement): void => {
-    const maxBeeps = input.value.trim() === '' ? null : Math.max(1, Math.floor(input.valueAsNumber))
+    const raw = input.valueAsNumber
+    const maxBeeps = input.value.trim() === '' || Number.isNaN(raw)
+      ? null
+      : Math.max(1, Math.floor(raw))
     state = {
       ...state,
       maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : null,
