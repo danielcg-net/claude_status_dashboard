@@ -1110,9 +1110,11 @@ const render = (): void => {
     render()
   })
 
-  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
-    const input = event.currentTarget as HTMLInputElement
-    const maxBeeps = input.value.trim() === '' ? null : Math.max(1, Math.floor(input.valueAsNumber))
+  const commitMaxBeeps = (input: HTMLInputElement): void => {
+    const raw = input.valueAsNumber
+    const maxBeeps = input.value.trim() === '' || Number.isNaN(raw)
+      ? null
+      : Math.max(1, Math.floor(raw))
     state = {
       ...state,
       maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : null,
@@ -1124,6 +1126,18 @@ const render = (): void => {
       maxBeeps: state.maxBeeps,
     })
     render()
+  }
+
+  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
+    commitMaxBeeps(event.currentTarget as HTMLInputElement)
+  })
+
+  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('input', (event) => {
+    const input = event.currentTarget as HTMLInputElement
+    // Fire on clear — change event may not fire for empty number inputs.
+    if (input.value.trim() === '') {
+      commitMaxBeeps(input)
+    }
   })
 
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
