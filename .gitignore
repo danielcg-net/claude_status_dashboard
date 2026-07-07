@@ -6,3 +6,5 @@ public/assets/client.js.map
 .DS_Store
 npm-debug.log*
 hooks/settings.global.json
+playwright-report/
+test-results/
