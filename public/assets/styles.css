@@ -593,6 +593,78 @@ h1 {
   font-size: 0.9rem;
 }
 
+/* ── Model breakdown bars (repo cards) ── */
+
+.model-breakdown {
+  margin-bottom: 10px;
+}
+
+.model-breakdown__bars {
+  display: grid;
+  gap: 6px;
+}
+
+.model-breakdown__bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.model-breakdown__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.model-breakdown__cost {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.model-breakdown__bar-fill {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.model-breakdown__bar-fill::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: var(--bar-width);
+  border-radius: inherit;
+  background: var(--bar-color, var(--blue));
+}
+
+/* ── Session card model tags ── */
+
+.session-card__models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.session-card__model-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
 .repo-card__daily {
   display: grid;
   gap: 5px;

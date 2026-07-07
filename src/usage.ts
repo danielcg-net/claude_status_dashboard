@@ -15,9 +15,19 @@ type UsageTotals = {
   readonly totalCost: number
 }
 
+type ModelBreakdown = {
+  readonly modelName: string
+  readonly cost: number
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheCreationTokens: number
+  readonly cacheReadTokens: number
+}
+
 type UsageDay = UsageTotals & {
   readonly date: string
   readonly modelsUsed: readonly string[]
+  readonly modelBreakdowns: readonly ModelBreakdown[]
 }
 
 type UsageProject = {
@@ -100,6 +110,21 @@ const totalsFrom = (record: JsonRecord): UsageTotals => {
   }
 }
 
+const breakdownFrom = (value: unknown): ModelBreakdown | null => {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  return {
+    modelName: asString(value.modelName),
+    cost: asNumber(value.cost ?? value.costUSD),
+    inputTokens: readInputTokens(value),
+    outputTokens: readOutputTokens(value),
+    cacheCreationTokens: readCacheCreationTokens(value),
+    cacheReadTokens: readCacheReadTokens(value),
+  }
+}
+
 const dayFrom = (value: unknown): UsageDay | null => {
   if (!isRecord(value)) {
     return null
@@ -109,6 +134,9 @@ const dayFrom = (value: unknown): UsageDay | null => {
     ...totalsFrom(value),
     date: asString(value.date),
     modelsUsed: asStringArray(value.modelsUsed ?? value.models),
+    modelBreakdowns: asArray(value.modelBreakdowns)
+      .map(breakdownFrom)
+      .filter((b): b is ModelBreakdown => b !== null),
   }
 }
 

@@ -25,9 +25,19 @@ type UsageTotals = {
   readonly totalCost: number
 }
 
+type ModelBreakdown = {
+  readonly modelName: string
+  readonly cost: number
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheCreationTokens: number
+  readonly cacheReadTokens: number
+}
+
 type UsageDay = UsageTotals & {
   readonly date: string
   readonly modelsUsed: readonly string[]
+  readonly modelBreakdowns: readonly ModelBreakdown[]
 }
 
 type UsageProject = {
@@ -183,6 +193,8 @@ const costWindowLabels: Record<CostWindow, string> = {
 }
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
+
+const MODEL_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#38bdf8', '#f87171'] as const
 
 const costWindowDays: Partial<Record<CostWindow, number>> = {
   '2d': 2,
@@ -420,6 +432,22 @@ const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
     .sort((left, right) => right.date.localeCompare(left.date))
     .slice(0, 5)
 
+const aggregateModelBreakdowns = (
+  days: readonly UsageDay[],
+  costWindow: CostWindow,
+): readonly { modelName: string; cost: number }[] => {
+  const windowDays = daysForWindow(days, costWindow)
+  const byModel = new Map<string, number>()
+  for (const day of windowDays) {
+    for (const breakdown of day.modelBreakdowns) {
+      byModel.set(breakdown.modelName, (byModel.get(breakdown.modelName) ?? 0) + breakdown.cost)
+    }
+  }
+  return [...byModel.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([modelName, cost]) => ({ modelName, cost }))
+}
+
 const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/
 
 const formatDayLabel = (date: string): string => {
@@ -564,6 +592,17 @@ const renderSessionUsage = (usageProject: UsageProject | null): HTMLElement => {
           createElement('strong', {}, [formatNumber(totals.totalTokens)]),
         ]),
       ]),
+    ...(() => {
+      const models = aggregateModelBreakdowns(usageProject.days, state.costWindow)
+      if (models.length === 0) return [] as HTMLElement[]
+      return [createElement('div', { class: 'session-card__models' },
+        models.map((m) =>
+          createElement('span', { class: 'session-card__model-tag' }, [
+            `${m.modelName} ${formatMoney(m.cost)}`,
+          ]),
+        ),
+      )]
+    })(),
     recentDays.length === 0
       ? createElement('div', { class: 'session-card__daily-empty' }, ['No usage in this window'])
       : createElement(
@@ -752,6 +791,22 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
         createElement('strong', {}, [formatNumber(totals.outputTokens)]),
       ]),
     ]),
+    ...(() => {
+      const models = aggregateModelBreakdowns(project.days, state.costWindow)
+      if (models.length === 0) return [] as HTMLElement[]
+      const maxModelCost = Math.max(...models.map((m) => m.cost), 0)
+      return [createElement('div', { class: 'model-breakdown' }, [
+        createElement('div', { class: 'model-breakdown__bars' },
+          models.map((m, i) =>
+            createElement('div', { class: 'model-breakdown__bar' }, [
+              createElement('span', { class: 'model-breakdown__label' }, [m.modelName]),
+              createElement('span', { class: 'model-breakdown__cost' }, [formatMoney(m.cost)]),
+              createElement('span', { class: 'model-breakdown__bar-fill', style: `--bar-width: ${maxModelCost > 0 ? Math.max(4, Math.round((m.cost / maxModelCost) * 100)) : 0}%; --bar-color: ${MODEL_COLORS[i % MODEL_COLORS.length]}` }),
+            ]),
+          ),
+        ),
+      ])]
+    })(),
     recentDays.length === 0
       ? createElement('div', { class: 'repo-card__daily-empty' }, ['No usage in this window'])
       : createElement(
@@ -838,9 +893,11 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
               createElement('div', { class: 'repo-detail__day-metrics' }, [
                 createElement('span', {}, [`${formatNumber(day.totalTokens)} tokens`]),
                 createElement('span', {}, [`${formatNumber(day.inputTokens)} in / ${formatNumber(day.outputTokens)} out`]),
-                day.modelsUsed.length > 0
-                  ? createElement('span', {}, [day.modelsUsed.join(', ')])
-                  : createElement('span', {}, ['—']),
+                day.modelBreakdowns.length > 0
+                  ? createElement('span', {}, [day.modelBreakdowns.map((b) => `${b.modelName} ${formatMoney(b.cost)}`).join(', ')])
+                  : day.modelsUsed.length > 0
+                    ? createElement('span', {}, [day.modelsUsed.join(', ')])
+                    : createElement('span', {}, ['—']),
               ]),
             ]),
           ),
