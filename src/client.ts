@@ -352,15 +352,22 @@ const loadState = async (): Promise<ApiState> => apiFetch<ApiState>('/api/sessio
 
 const loadUsage = async (): Promise<UsageSummary> => apiFetch<UsageSummary>('/api/usage')
 
+const booleanAttrs = new Set(['checked', 'disabled', 'selected', 'readonly', 'multiple', 'hidden'])
+
 const createElement = <K extends keyof HTMLElementTagNameMap>(
   tagName: K,
-  attributes: Record<string, string> = {},
+  attributes: Record<string, string | undefined> = {},
   children: readonly (Node | string)[] = [],
 ): HTMLElementTagNameMap[K] => {
   const element = document.createElement(tagName)
 
   Object.entries(attributes).forEach(([key, value]) => {
-    element.setAttribute(key, value)
+    if (value === undefined) return
+    if (booleanAttrs.has(key)) {
+      ;(element as Record<string, unknown>)[key] = value === 'true'
+    } else {
+      element.setAttribute(key, value)
+    }
   })
 
   children.forEach((child) => {
@@ -987,29 +994,37 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 
 const renderAlertControls = (): HTMLElement =>
   createElement('div', { class: 'alert-controls', 'aria-label': 'Beep alert controls' }, [
-    createElement('label', { class: 'alert-controls__field' }, [
-      createElement('span', {}, ['Start after']),
-      createElement('input', {
-        id: 'alert-after-seconds',
-        type: 'number',
-        min: '0',
-        step: '1',
-        inputmode: 'numeric',
-        value: String(redAlertAfterSeconds(state)),
-      }),
-      createElement('span', { class: 'alert-controls__unit' }, ['sec']),
-    ]),
-    createElement('label', { class: 'alert-controls__field' }, [
-      createElement('span', {}, ['Stop after']),
-      createElement('input', {
-        id: 'max-beeps',
-        type: 'number',
-        step: '1',
-        inputmode: 'numeric',
-        placeholder: 'No limit',
-        value: state.maxBeeps === null ? '' : String(state.maxBeeps),
-      }),
-      createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
+    createElement('div', { class: 'alert-controls__row' }, [
+      createElement('label', { class: 'alert-controls__field' }, [
+        createElement('span', { class: 'alert-controls__label' }, ['Alert after']),
+        createElement('input', {
+          id: 'alert-after-seconds',
+          type: 'number',
+          min: '0',
+          step: '1',
+          inputmode: 'numeric',
+          value: String(redAlertAfterSeconds(state)),
+        }),
+        createElement('span', { class: 'alert-controls__unit' }, ['sec']),
+      ]),
+      createElement('label', { class: 'alert-controls__field' }, [
+        createElement('input', {
+          id: 'limit-beeps',
+          type: 'checkbox',
+          checked: state.maxBeeps !== null ? 'true' : undefined,
+        }),
+        createElement('span', { class: 'alert-controls__label' }, ['Limit to']),
+        createElement('input', {
+          id: 'max-beeps',
+          type: 'number',
+          min: '1',
+          step: '1',
+          inputmode: 'numeric',
+          value: state.maxBeeps !== null ? String(state.maxBeeps) : '',
+          disabled: state.maxBeeps === null ? 'true' : undefined,
+        }),
+        createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
+      ]),
     ]),
     createElement('button', { id: 'audio-toggle', class: 'audio-toggle', type: 'button' }, [
       state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
@@ -1109,15 +1124,28 @@ const render = (): void => {
     render()
   })
 
+  document.querySelector<HTMLInputElement>('#limit-beeps')?.addEventListener('change', (event) => {
+    const checked = (event.currentTarget as HTMLInputElement).checked
+    state = {
+      ...state,
+      maxBeeps: checked ? (state.maxBeeps ?? 5) : null,
+      lastBeepAt: 0,
+      beepCount: 0,
+    }
+    saveAlertSettings({
+      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
+      maxBeeps: state.maxBeeps,
+    })
+    render()
+  })
+
   document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
     const input = event.currentTarget as HTMLInputElement
     const raw = input.valueAsNumber
-    const maxBeeps = input.value.trim() === '' || Number.isNaN(raw)
-      ? null
-      : Math.max(1, Math.floor(raw))
+    const maxBeeps = Number.isNaN(raw) ? (state.maxBeeps ?? 5) : Math.max(1, Math.floor(raw))
     state = {
       ...state,
-      maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : null,
+      maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : (state.maxBeeps ?? 5),
       lastBeepAt: 0,
       beepCount: 0,
     }
