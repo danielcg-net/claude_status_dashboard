@@ -994,35 +994,37 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 
 const renderAlertControls = (): HTMLElement =>
   createElement('div', { class: 'alert-controls', 'aria-label': 'Beep alert controls' }, [
-    createElement('label', { class: 'alert-controls__field' }, [
-      createElement('span', {}, ['Start after']),
-      createElement('input', {
-        id: 'alert-after-seconds',
-        type: 'number',
-        min: '0',
-        step: '1',
-        inputmode: 'numeric',
-        value: String(redAlertAfterSeconds(state)),
-      }),
-      createElement('span', { class: 'alert-controls__unit' }, ['sec']),
-    ]),
-    createElement('label', { class: 'alert-controls__field' }, [
-      createElement('input', {
-        id: 'limit-beeps',
-        type: 'checkbox',
-        checked: state.maxBeeps !== null ? 'true' : undefined,
-      }),
-      createElement('span', {}, ['Stop after']),
-      createElement('input', {
-        id: 'max-beeps',
-        type: 'number',
-        min: '1',
-        step: '1',
-        inputmode: 'numeric',
-        value: state.maxBeeps !== null ? String(state.maxBeeps) : '',
-        disabled: state.maxBeeps === null ? 'true' : undefined,
-      }),
-      createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
+    createElement('div', { class: 'alert-controls__row' }, [
+      createElement('label', { class: 'alert-controls__field' }, [
+        createElement('span', { class: 'alert-controls__label' }, ['Alert after']),
+        createElement('input', {
+          id: 'alert-after-seconds',
+          type: 'number',
+          min: '0',
+          step: '1',
+          inputmode: 'numeric',
+          value: String(redAlertAfterSeconds(state)),
+        }),
+        createElement('span', { class: 'alert-controls__unit' }, ['sec']),
+      ]),
+      createElement('label', { class: 'alert-controls__field' }, [
+        createElement('input', {
+          id: 'limit-beeps',
+          type: 'checkbox',
+          checked: state.maxBeeps !== null ? 'true' : undefined,
+        }),
+        createElement('span', { class: 'alert-controls__label' }, ['Limit to']),
+        createElement('input', {
+          id: 'max-beeps',
+          type: 'number',
+          min: '1',
+          step: '1',
+          inputmode: 'numeric',
+          value: state.maxBeeps !== null ? String(state.maxBeeps) : '',
+          disabled: state.maxBeeps === null ? 'true' : undefined,
+        }),
+        createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
+      ]),
     ]),
     createElement('button', { id: 'audio-toggle', class: 'audio-toggle', type: 'button' }, [
       state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
