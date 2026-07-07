@@ -27,6 +27,9 @@ const makeDailyJson = (overrides: Record<string, unknown> = {}) => ({
       totalTokens: 2000,
       totalCost: 0.05,
       modelsUsed: ['claude-sonnet-4-5-20250929'],
+      modelBreakdowns: [
+        { modelName: 'claude-sonnet-4-5-20250929', cost: 0.05, inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 200, cacheReadTokens: 300 },
+      ],
       ...overrides,
     },
   ],
@@ -52,6 +55,9 @@ const makeInstancesJson = () => ({
         totalTokens: 1500,
         totalCost: 0.03,
         modelsUsed: ['claude-sonnet-4-5-20250929'],
+        modelBreakdowns: [
+          { modelName: 'claude-sonnet-4-5-20250929', cost: 0.03, inputTokens: 800, outputTokens: 400, cacheCreationTokens: 100, cacheReadTokens: 200 },
+        ],
       },
       {
         date: '2026-06-02',
@@ -62,6 +68,9 @@ const makeInstancesJson = () => ({
         totalTokens: 450,
         totalCost: 0.01,
         modelsUsed: ['claude-sonnet-4-5-20250929'],
+        modelBreakdowns: [
+          { modelName: 'claude-sonnet-4-5-20250929', cost: 0.01, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 50, cacheReadTokens: 100 },
+        ],
       },
     ],
     '-Users-test-Private-Projects-other': [
@@ -74,6 +83,9 @@ const makeInstancesJson = () => ({
         totalTokens: 150,
         totalCost: 0.005,
         modelsUsed: ['claude-sonnet-4-5-20250929'],
+        modelBreakdowns: [
+          { modelName: 'claude-sonnet-4-5-20250929', cost: 0.005, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0 },
+        ],
       },
     ],
   },
@@ -119,6 +131,9 @@ describe('fetchUsageSummary', () => {
     expect(result.totals.totalTokens).toBe(20000)
     expect(result.today).not.toBeNull()
     expect(result.today?.date).toBe('2026-06-01')
+    expect(result.today?.modelBreakdowns).toHaveLength(1)
+    expect(result.today?.modelBreakdowns[0]?.modelName).toBe('claude-sonnet-4-5-20250929')
+    expect(result.today?.modelBreakdowns[0]?.cost).toBe(0.05)
     expect(Object.keys(result.projects)).toHaveLength(2)
 
     const myApp = result.projects['-Users-test-Private-Projects-my-app']
