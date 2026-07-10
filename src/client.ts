@@ -394,14 +394,14 @@ const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): reado
   }
 
   if (costWindow === 'today') {
-    const today = utcDateOf(new Date())
+    const today = utcDateString(new Date())
     return days.filter((day) => day.date === today)
   }
 
   const windowDays = costWindowDays[costWindow] ?? 1
   const cutoff = new Date()
   cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1))
-  const cutoffDate = utcDateOf(cutoff)
+  const cutoffDate = utcDateString(cutoff)
 
   return days.filter((day) => day.date >= cutoffDate)
 }
@@ -449,20 +449,19 @@ const aggregateModelBreakdowns = (
     .map(([modelName, cost]) => ({ modelName, cost }))
 }
 
-const utcIsoDate = (isoString: string): string => new Date(isoString).toISOString().slice(0, 10)
-
 // ccusage day keys are always UTC dates — use UTC methods when comparing
 // against them to avoid off-by-one errors for users in non-UTC timezones.
-const utcDateOf = (date: Date): string =>
-  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+const utcDateString = (date: Date): string => date.toISOString().slice(0, 10)
+
+const parseUtcDateString = (isoString: string): string | null => {
+  const date = new Date(isoString)
+  return Number.isNaN(date.getTime()) ? null : utcDateString(date)
+}
 
 const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
-  if (!session.createdAt || !session.updatedAt) return days
-
-  // Use UTC dates from the ISO string to match ccusage day keys, which the
-  // server process reports in UTC regardless of the user's local timezone.
-  const startDate = utcIsoDate(session.createdAt)
-  const endDate = utcIsoDate(session.updatedAt)
+  const startDate = parseUtcDateString(session.createdAt)
+  const endDate = parseUtcDateString(session.updatedAt)
+  if (startDate === null || endDate === null) return days
 
   return days.filter((day) => day.date >= startDate && day.date <= endDate)
 }
