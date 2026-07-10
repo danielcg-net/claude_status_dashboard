@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
+import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
 
 type AppState = {
@@ -29,7 +30,19 @@ const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
 const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000', 10)
+const dataDir = process.env.DATA_DIR ?? 'data'
+const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? '604800000', 10)
+const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? '3600000', 10)
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
+
+// Serializes all writes: each save reads state.sessions at execution time so it
+// always reflects the latest in-memory state even when multiple mutations queue up.
+let saveQueue: Promise<void> = Promise.resolve()
+const enqueueSave = (): void => {
+  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch((err) => {
+    console.error('Failed to persist sessions:', err)
+  })
+}
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
   const body = await request.json().catch(() => {
@@ -74,6 +87,7 @@ app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
   const [sessions, session] = registerSession(state.sessions, input)
   state = { sessions }
+  enqueueSave()
 
   return context.json({ session }, 201)
 })
@@ -87,6 +101,7 @@ app.patch('/api/sessions/:id', async (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
+  enqueueSave()
   return context.json({ session })
 })
 
@@ -98,6 +113,7 @@ app.delete('/api/sessions/:id', (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
+  enqueueSave()
   return context.json({ deleted: true })
 })
 
@@ -120,23 +136,46 @@ app.get('*', serveStatic({ path: `${staticRoot}/index.html` }))
 
 export { app }
 
-// Exported for test isolation — resets sessions and usage cache.
+// Exported for test isolation — resets sessions, usage cache, and save queue.
 export const __resetForTests = (): void => {
   state = { sessions: new Map() }
   usageCache = null
+  saveQueue = Promise.resolve()
 }
 
 const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts')
 
 if (isMain || process.env.NODE_ENV !== 'test') {
-  serve(
+  const sessions = await loadSessions(dataDir, sessionTtlMs)
+  state = { sessions }
+
+  const evictTimer = setInterval(() => {
+    const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
+    if (evicted.size !== state.sessions.size) {
+      state = { sessions: evicted }
+      enqueueSave()
+    }
+  }, evictIntervalMs)
+
+  const server = serve(
     {
       fetch: app.fetch,
       port,
-    hostname,
-  },
-  (info) => {
-    console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
-  },
-)
+      hostname,
+    },
+    (info) => {
+      console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
+    },
+  )
+
+  const shutdown = (): void => {
+    clearInterval(evictTimer)
+    // Stop accepting new connections; wait for open connections to drain,
+    // then flush pending saves before exiting.
+    const serverClosed = new Promise<void>((resolve) => server.on('close', resolve))
+    server.close()
+    Promise.all([serverClosed, saveQueue.catch(() => {})]).finally(() => process.exit(0))
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
 }
