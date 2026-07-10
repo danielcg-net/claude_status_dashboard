@@ -10,6 +10,12 @@ services:
       RED_ALERT_AFTER_MS: "300000"
       USAGE_CACHE_TTL_MS: "30000"
       CLAUDE_CONFIG_DIR: "/claude"
+      DATA_DIR: "/data"
+      SESSION_TTL_MS: "604800000"
     volumes:
       - "${HOME}/.claude:/claude:ro"
+      - dashboard-data:/data
     restart: unless-stopped
+
+volumes:
+  dashboard-data:

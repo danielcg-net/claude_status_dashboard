@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
+import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
 
 type AppState = {
@@ -29,6 +30,9 @@ const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
 const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000', 10)
+const dataDir = process.env.DATA_DIR ?? 'data'
+const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000), 10)
+const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? String(60 * 60 * 1000), 10)
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
@@ -74,6 +78,7 @@ app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
   const [sessions, session] = registerSession(state.sessions, input)
   state = { sessions }
+  void saveSessions(dataDir, sessions)
 
   return context.json({ session }, 201)
 })
@@ -87,6 +92,7 @@ app.patch('/api/sessions/:id', async (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
+  void saveSessions(dataDir, sessions)
   return context.json({ session })
 })
 
@@ -98,6 +104,7 @@ app.delete('/api/sessions/:id', (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
+  void saveSessions(dataDir, sessions)
   return context.json({ deleted: true })
 })
 
@@ -129,14 +136,25 @@ export const __resetForTests = (): void => {
 const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts')
 
 if (isMain || process.env.NODE_ENV !== 'test') {
+  const sessions = await loadSessions(dataDir, sessionTtlMs)
+  state = { sessions }
+
+  setInterval(() => {
+    const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
+    if (evicted.size !== state.sessions.size) {
+      state = { sessions: evicted }
+      void saveSessions(dataDir, evicted)
+    }
+  }, evictIntervalMs)
+
   serve(
     {
       fetch: app.fetch,
       port,
-    hostname,
-  },
-  (info) => {
-    console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
-  },
-)
+      hostname,
+    },
+    (info) => {
+      console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
+    },
+  )
 }
