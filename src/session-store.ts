@@ -31,7 +31,7 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
     const entries = parsed
       .map((item) => {
         const result = sessionSchema.safeParse(item)
-        return result.success ? ([result.data.id, result.data as Session] as const) : null
+        return result.success ? ([result.data.id, result.data] as const) : null
       })
       .filter((entry): entry is readonly [string, Session] => entry !== null)
     return evictStaleSessions(new Map(entries), ttlMs)

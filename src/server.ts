@@ -39,7 +39,7 @@ let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } |
 // always reflects the latest in-memory state even when multiple mutations queue up.
 let saveQueue: Promise<void> = Promise.resolve()
 const enqueueSave = (): void => {
-  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions))
+  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch(() => {})
 }
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
@@ -134,10 +134,11 @@ app.get('*', serveStatic({ path: `${staticRoot}/index.html` }))
 
 export { app }
 
-// Exported for test isolation — resets sessions and usage cache.
+// Exported for test isolation — resets sessions, usage cache, and save queue.
 export const __resetForTests = (): void => {
   state = { sessions: new Map() }
   usageCache = null
+  saveQueue = Promise.resolve()
 }
 
 const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts')
