@@ -449,7 +449,7 @@ const aggregateModelBreakdowns = (
     .map(([modelName, cost]) => ({ modelName, cost }))
 }
 
-const utcIsoDate = (isoString: string): string => isoString.slice(0, 10)
+const utcIsoDate = (isoString: string): string => new Date(isoString).toISOString().slice(0, 10)
 
 // ccusage day keys are always UTC dates — use UTC methods when comparing
 // against them to avoid off-by-one errors for users in non-UTC timezones.
