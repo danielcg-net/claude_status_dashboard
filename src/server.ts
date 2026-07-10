@@ -15,6 +15,7 @@ import {
 } from './domain.js'
 import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
+import { checkLatestVersion, compareVersions, getVersion } from './version.js'
 
 type AppState = {
   readonly sessions: SessionStore
@@ -34,6 +35,9 @@ const dataDir = process.env.DATA_DIR ?? 'data'
 const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? '604800000', 10)
 const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? '3600000', 10)
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
+const versionCheckUrl = process.env.VERSION_CHECK_URL ?? 'https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/package.json'
+const versionCheckTtlMs = Number.parseInt(process.env.VERSION_CHECK_TTL_MS ?? '3600000', 10)
+let versionCache: { readonly expiresAt: number; readonly latestVersion: string | null } | null = null
 
 // Serializes all writes: each save reads state.sessions at execution time so it
 // always reflects the latest in-memory state even when multiple mutations queue up.
@@ -61,6 +65,28 @@ app.get('/api/health', (context) =>
     redAlertAfterMs,
   }),
 )
+
+app.get('/api/version', async (context) => {
+  const currentVersion = getVersion()
+
+  if (!versionCache || Date.now() >= versionCache.expiresAt) {
+    const latestVersion = await checkLatestVersion(versionCheckUrl)
+    versionCache = {
+      expiresAt: Date.now() + versionCheckTtlMs,
+      latestVersion,
+    }
+  }
+
+  const latestVersion = versionCache.latestVersion
+  const updateAvailable =
+    latestVersion !== null && compareVersions(latestVersion, currentVersion) > 0
+
+  return context.json({
+    version: currentVersion,
+    latestVersion,
+    updateAvailable,
+  })
+})
 
 app.get('/api/sessions', (context) =>
   context.json({
@@ -140,6 +166,7 @@ export { app }
 export const __resetForTests = (): void => {
   state = { sessions: new Map() }
   usageCache = null
+  versionCache = null
   saveQueue = Promise.resolve()
 }
 

@@ -1025,3 +1025,98 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Version badge ──────────────────────────────────── */
+
+.version-badge {
+  display: inline-block;
+  margin-left: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 500;
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+}
+
+/* ── Update banner ──────────────────────────────────── */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 3px solid var(--blue);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.update-banner__body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.update-banner__icon {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+  color: var(--blue);
+}
+
+.update-banner__body strong {
+  font-weight: 700;
+}
+
+.update-banner a {
+  color: var(--blue);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.update-banner a:hover {
+  color: #a0cfff;
+}
+
+.update-banner__dismiss {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.update-banner__dismiss:hover {
+  border-color: var(--blue);
+  color: var(--text);
+  background: var(--panel-strong);
+}
+
+@media (max-width: 600px) {
+  .update-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .update-banner__body {
+    flex-wrap: wrap;
+  }
+}

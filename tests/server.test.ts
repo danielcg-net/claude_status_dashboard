@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const mockFetchUsageSummary = vi.hoisted(() => vi.fn())
+const mockCheckLatestVersion = vi.hoisted(() => vi.fn())
 
 vi.mock('../src/usage.js', () => ({
   fetchUsageSummary: mockFetchUsageSummary,
 }))
+
+vi.mock('../src/version.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/version.js')>()
+  return {
+    ...actual,
+    checkLatestVersion: mockCheckLatestVersion,
+  }
+})
 
 vi.mocked(mockFetchUsageSummary).mockResolvedValue({
   available: false,
@@ -17,6 +26,8 @@ vi.mocked(mockFetchUsageSummary).mockResolvedValue({
   sessions: [],
   error: null,
 })
+
+vi.mocked(mockCheckLatestVersion).mockResolvedValue(null)
 
 import { app, __resetForTests } from '../src/server.js'
 
@@ -208,5 +219,61 @@ describe('GET /api/usage', () => {
     const body = await res.json()
     expect(body.available).toBe(true)
     expect(body.totals.totalCost).toBe(0.01)
+  })
+})
+
+describe('GET /api/version', () => {
+  it('returns the current version and no update by default', async () => {
+    const res = await app.request('/api/version')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.version).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(body.updateAvailable).toBe(false)
+    expect(body.latestVersion).toBeNull()
+  })
+
+  it('reports updateAvailable when latest version is newer', async () => {
+    mockCheckLatestVersion.mockResolvedValueOnce('99.99.99')
+
+    const res = await app.request('/api/version')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.latestVersion).toBe('99.99.99')
+    expect(body.updateAvailable).toBe(true)
+  })
+
+  it('does not report updateAvailable when latest is older', async () => {
+    mockCheckLatestVersion.mockResolvedValueOnce('0.0.1')
+
+    const res = await app.request('/api/version')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.latestVersion).toBe('0.0.1')
+    expect(body.updateAvailable).toBe(false)
+  })
+
+  it('does not report updateAvailable when latest equals current', async () => {
+    mockCheckLatestVersion.mockResolvedValueOnce('0.1.0')
+
+    const res = await app.request('/api/version')
+    const body = await res.json()
+    expect(body.version).toBe('0.1.0')
+    expect(body.latestVersion).toBe('0.1.0')
+    expect(body.updateAvailable).toBe(false)
+  })
+
+  it('caches version check results', async () => {
+    mockCheckLatestVersion.mockClear()
+    mockCheckLatestVersion.mockResolvedValueOnce('1.0.0')
+
+    const first = await app.request('/api/version')
+    const firstBody = await first.json()
+    expect(firstBody.latestVersion).toBe('1.0.0')
+
+    const second = await app.request('/api/version')
+    const secondBody = await second.json()
+    expect(secondBody.latestVersion).toBe('1.0.0')
+
+    expect(mockCheckLatestVersion).toHaveBeenCalledTimes(1)
   })
 })
