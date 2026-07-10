@@ -17,28 +17,105 @@ Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks re
 
 ---
 
-## Statuses
+## Quick Start
+
+**Prerequisites:** Docker, `curl`
+
+### Step 1 — Start the dashboard
+
+```bash
+git clone https://github.com/danielcg-net/claude_status_dashboard.git
+cd claude_status_dashboard
+docker compose up --build -d
+```
+
+Open [http://localhost:8787](http://localhost:8787). You'll see an empty dashboard — that's expected until the hook is wired up.
+
+### Step 2 — Install the Claude Code plugin
+
+The plugin auto-reports every Claude Code session to the dashboard. Install it globally once and all your repos will show up:
+
+```bash
+claude plugin marketplace add danielcg-net/claude_status_dashboard --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
+Verify it's installed:
+
+```bash
+claude plugin list
+```
+
+### Step 3 — Start a Claude Code session
+
+Open any project with Claude Code. Within seconds a session card should appear on the dashboard at [http://localhost:8787](http://localhost:8787).
+
+That's it. Every Claude Code session across all your repos will now report in automatically.
+
+---
+
+## How It Works
+
+```
+Claude Code  →  hook script  →  POST /api/sessions  →  Dashboard
+                                                          ↕
+                                              ccusage reads ~/.claude logs
+                                              and shows cost & token totals
+```
+
+- **Hooks** fire on every Claude Code lifecycle event and push status to the dashboard API
+- **ccusage** reads your local `~/.claude/projects/` logs to compute per-session costs
+- **State is in-memory** — restarting the container clears the session cards (costs from ccusage are unaffected)
+
+---
+
+## Session Statuses
 
 | Color | Meaning |
 |:---:|:---|
-| 🟢 **Green** | Claude has finished running something. |
-| 🟡 **Yellow** | Claude is idle at the prompt, waiting for your input. |
-| 🟠 **Orange** | Claude is thinking and doing stuff. |
-| 🔴 **Red** | Claude is paused waiting for an approval or decision. |
+| 🟢 **Green** | Claude finished running |
+| 🟡 **Yellow** | Idle — waiting for your input |
+| 🟠 **Orange** | Actively thinking or using tools |
+| 🔴 **Red** | Paused — needs your approval or attention |
 
-## Quick Start
+---
 
-### Docker Compose (recommended)
+## Alternative: Manual Hook Setup
+
+If you prefer not to use the plugin, you can wire up the hook script directly.
+
+**1. Make the hook executable:**
 
 ```bash
-docker compose up --build
+chmod +x /path/to/claude_status_dashboard/hooks/claude-status-dashboard.sh
 ```
 
-Open [http://localhost:8787](http://localhost:8787).
+**2. Add the hooks to `~/.claude/settings.json`:**
 
-The app stores session state in memory. Restarting the container clears the dashboard.
+Copy the contents of [`hooks/settings.global.example.json`](hooks/settings.global.example.json) into the `hooks` key of your `~/.claude/settings.json`, replacing `{{REPO_ROOT}}` with the absolute path where you cloned this repo.
 
-By default, Compose mounts your host Claude Code config directory into the container:
+For example, if cloned to `/home/user/claude_status_dashboard`:
+
+```json
+"command": "bash /home/user/claude_status_dashboard/hooks/claude-status-dashboard.sh"
+```
+
+---
+
+## Configuration
+
+### Dashboard container
+
+Set these in `compose.yml` under `environment`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLAUDE_CONFIG_DIR` | `/claude` | Path to mounted Claude logs inside the container |
+| `USAGE_CACHE_TTL_MS` | `30000` | How often to refresh ccusage data (ms) |
+| `RED_ALERT_AFTER_MS` | `300000` | How long a red card stays before beeping |
+| `PORT` | `8787` | HTTP port |
+
+By default, Compose mounts `~/.claude` into the container as read-only:
 
 ```yaml
 volumes:
@@ -47,11 +124,61 @@ environment:
   CLAUDE_CONFIG_DIR: "/claude"
 ```
 
-If your Claude Code logs live somewhere else, change the volume source and keep `CLAUDE_CONFIG_DIR` pointed at the mounted path.
+If your Claude logs live elsewhere, update the volume source and `CLAUDE_CONFIG_DIR` accordingly.
+
+### Hook environment variables
+
+Optional — the hook works without any of these:
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLAUDE_STATUS_API_URL` | `http://localhost:8787` | Dashboard API base URL |
+| `CLAUDE_STATUS_CURL_TIMEOUT` | `2` | Seconds before giving up on the API call |
+| `CLAUDE_STATUS_USAGE_PROJECT` | _(auto-detected)_ | Override the ccusage project key for this repo |
+
+The hook auto-detects the ccusage project key by walking up to the nearest Git root, so `CLAUDE_STATUS_USAGE_PROJECT` is rarely needed.
 
 ---
 
-## API
+## Red Alert Beeps
+
+The browser emits a quiet beep when any card stays **red** longer than `RED_ALERT_AFTER_MS`.
+
+Browsers require a user gesture before audio plays — click **Enable beeps** after opening the page.
+
+The page also stores these controls in the browser:
+
+- **Start after** — seconds a card must stay red before beeping
+- **Stop after** — number of beeps before stopping (blank = no limit)
+
+---
+
+## Updating the Plugin
+
+After pulling new changes, reinstall the plugin to pick up the latest hook script:
+
+```bash
+claude plugin uninstall claude-status-dashboard --scope user
+claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
+```
+
+---
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:8787](http://localhost:8787).
+
+---
+
+## API Reference
+
+<details>
+<summary>View API endpoints</summary>
 
 ### Read ccusage totals
 
@@ -64,10 +191,10 @@ curl http://localhost:8787/api/usage
 ```bash
 curl -X POST http://localhost:8787/api/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"id":"repo-main","name":"My project main worktree","usageProject":"my-project","status":"orange","detail":"Claude is running tests"}'
+  -d '{"id":"repo-main","name":"My project","usageProject":"my-project","status":"orange","detail":"Claude is running tests"}'
 ```
 
-### Set a session status
+### Update a session status
 
 ```bash
 curl -X PATCH http://localhost:8787/api/sessions/repo-main \
@@ -87,108 +214,15 @@ curl http://localhost:8787/api/sessions
 curl -X DELETE http://localhost:8787/api/sessions/repo-main
 ```
 
-> **`usageProject`** is optional. When present, the dashboard uses it to match the card to `ccusage daily --instances --json` project totals and display session cost on the card. If omitted, the browser tries to match the card `id` or `name` against the ccusage project key.
->
-> To see available project keys:
+> **`usageProject`** links the session card to a ccusage project for cost display. If omitted, the dashboard tries to match by session `id` or `name`. To find your project keys:
 > ```bash
 > npx ccusage claude daily --instances --json
 > ```
 
-## Claude Code Hook
-
-Sample global Claude Code hooks live in [hooks/](hooks/README.md).
-
-Yes, these can be configured globally in `~/.claude/settings.json`; they do not need to be installed per repo. The sample hook reads Claude Code's hook JSON from stdin and updates the dashboard by `session_id`.
-
-### Status Mapping
-
-| Hook Event | Dashboard Status |
-|:---|---:|
-| `SessionStart`, `UserPromptSubmit` | 🟡 **yellow** (idle at prompt) |
-| `PreToolUse`, `PostToolUse` | 🟠 **orange** (actively working) |
-| `Notification` | 🔴 **red** (needs attention) |
-| `Stop`, `SubagentStop` | 🟢 **green** (finished) |
-| `StopFailure` | 🔴 **red** (error) |
+</details>
 
 ---
 
-## Claude Code Plugin
+## Repository
 
-A Claude Code plugin package lives in [claude-code-plugin/claude-status-dashboard](claude-code-plugin/claude-status-dashboard/README.md). It bundles the same hook behavior with a `.claude-plugin/plugin.json` manifest and plugin `hooks/hooks.json`.
-
-### Install from the GitHub marketplace
-
-```bash
-claude plugin marketplace add danielcg-net/claude_status_dashboard --scope user
-claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
-```
-
-### Local development
-
-```bash
-claude plugin marketplace add ./claude-code-plugin --scope user
-claude plugin install claude-status-dashboard@claude-status-dashboard --scope user
-```
-
----
-
-## Red Alert Beeps
-
-The browser can emit a quiet beep when any card remains **red** longer than `RED_ALERT_AFTER_MS`.
-
-Browsers require a user gesture before audio can play, so click **Enable beeps** after opening the page.
-
-Configure the default threshold in `compose.yml`:
-
-```yaml
-environment:
-  RED_ALERT_AFTER_MS: "300000"
-```
-
-The page also has browser-stored controls for:
-
-- `Start after`: how many seconds a card must remain red before beeping starts.
-- `Stop after`: how many beeps play before stopping. Leave it blank for no limit.
-
----
-
-## ccusage Integration
-
-Usage metrics are refreshed through the server every `USAGE_CACHE_TTL_MS` milliseconds. The browser polls `/api/usage` every 30 seconds.
-
-The app runs:
-
-```bash
-ccusage claude daily --json
-ccusage claude daily --instances --json
-ccusage claude blocks --json
-```
-
-If the installed `ccusage` version does not support the agent subcommand form, the adapter falls back to:
-
-```bash
-ccusage daily --json
-ccusage daily --instances --json
-ccusage blocks --json
-```
-
-If the usage panel says data is unavailable, check that the container can read Claude logs and that `CLAUDE_CONFIG_DIR` points to the mounted directory.
-
-Each session card displays cost/tokens from the matched `ccusage --instances` project. The timeframe selector defaults to today and supports 2, 3, 7, 14, 30, 90 days, or all history. Cost summaries are always tied to the selected timeframe; cards also show the most recent non-zero daily costs for that window.
-
-For the cleanest match, send `usageProject` from your hook using the exact project key reported by `ccusage`.
-
-### Local Development
-
-```bash
-npm install
-npm run dev
-```
-
-Then open [http://localhost:8787](http://localhost:8787).
-
----
-
-## Publish Target
-
-This repository is published at [danielcg-net/claude_status_dashboard](https://github.com/danielcg-net/claude_status_dashboard).
+Published at [danielcg-net/claude_status_dashboard](https://github.com/danielcg-net/claude_status_dashboard).
