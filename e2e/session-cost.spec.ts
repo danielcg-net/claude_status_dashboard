@@ -42,6 +42,7 @@ const makeUsageResponse = (projectKey: string, days: ReturnType<typeof makeDay>[
   today: days.find((d) => d.date === TODAY_UTC) ?? null,
   activeBlock: null,
   blocks: [],
+  sessions: [],
   projects: {
     [projectKey]: {
       project: projectKey,
@@ -91,7 +92,7 @@ test.describe('session card cost display', () => {
   test('shows "No usage data" when usageProject has no matching ccusage entry', async ({ page, request }) => {
     await page.route('/api/usage', (route) =>
       route.fulfill({
-        json: { available: true, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], projects: {} },
+        json: { available: true, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], sessions: [], projects: {} },
       }),
     )
 
@@ -186,7 +187,7 @@ test.describe('session status lifecycle', () => {
   test('PATCH updates the existing card status without creating a new card', async ({ page, request }) => {
     await page.route('/api/usage', (route) =>
       route.fulfill({
-        json: { available: false, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], projects: {} },
+        json: { available: false, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], sessions: [], projects: {} },
       }),
     )
 
@@ -214,7 +215,7 @@ test.describe('session status lifecycle', () => {
   test('deleting a session removes its card from the UI', async ({ page, request }) => {
     await page.route('/api/usage', (route) =>
       route.fulfill({
-        json: { available: false, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], projects: {} },
+        json: { available: false, generatedAt: new Date().toISOString(), totals: {}, today: null, activeBlock: null, blocks: [], sessions: [], projects: {} },
       }),
     )
 
