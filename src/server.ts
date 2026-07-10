@@ -31,9 +31,16 @@ const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
 const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000', 10)
 const dataDir = process.env.DATA_DIR ?? 'data'
-const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? String(7 * 24 * 60 * 60 * 1000), 10)
-const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? String(60 * 60 * 1000), 10)
+const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? '604800000', 10)
+const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? '3600000', 10)
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
+
+// Serializes all writes: each save reads state.sessions at execution time so it
+// always reflects the latest in-memory state even when multiple mutations queue up.
+let saveQueue: Promise<void> = Promise.resolve()
+const enqueueSave = (): void => {
+  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions))
+}
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
   const body = await request.json().catch(() => {
@@ -78,7 +85,7 @@ app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
   const [sessions, session] = registerSession(state.sessions, input)
   state = { sessions }
-  void saveSessions(dataDir, sessions)
+  enqueueSave()
 
   return context.json({ session }, 201)
 })
@@ -92,7 +99,7 @@ app.patch('/api/sessions/:id', async (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
-  void saveSessions(dataDir, sessions)
+  enqueueSave()
   return context.json({ session })
 })
 
@@ -104,7 +111,7 @@ app.delete('/api/sessions/:id', (context) => {
     throw new HTTPException(404, { message: 'Session not found.' })
   }
 
-  void saveSessions(dataDir, sessions)
+  enqueueSave()
   return context.json({ deleted: true })
 })
 
@@ -143,7 +150,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
     if (evicted.size !== state.sessions.size) {
       state = { sessions: evicted }
-      void saveSessions(dataDir, evicted)
+      enqueueSave()
     }
   }, evictIntervalMs)
 

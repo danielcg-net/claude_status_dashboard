@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { sessionStatuses, type Session, type SessionStore } from './domain.js'
@@ -52,5 +52,6 @@ export const saveSessions = async (dataDir: string, sessions: SessionStore): Pro
     await rename(tmpPath, filePath)
   } catch (error) {
     console.error('Failed to save sessions to cache:', error)
+    await unlink(tmpPath).catch(() => undefined)
   }
 }
