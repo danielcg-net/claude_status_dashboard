@@ -49,14 +49,24 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 - Playwright config starts `node dist/server.js` via `webServer`
 - Follow `playwright-best-practices` and `playwright-page-objects` skills
 
+## Versioning
+
+- **Every PR must bump the version** in `package.json` following [semver](https://semver.org/). CI blocks merging if the version hasn't changed.
+  - **MAJOR** (`1.0.0`): breaking changes to the API, dashboard behavior, or hook configuration format.
+  - **MINOR** (`0.1.0`): new features, new hook events, new dashboard capabilities.
+  - **PATCH** (`0.0.1`): bug fixes, documentation, internal refactors, CI changes.
+- The version is read at runtime by `src/version.ts` (server) and embedded at build time by `scripts/build-client.mjs` (frontend `__VERSION__`).
+- When bumping `package.json`, also bump the version in `claude-code-plugin/claude-status-dashboard/.claude-plugin/plugin.json` to match. CI validates they stay in sync.
+
 ## PR process
 
 1. Branch off `main`, implement changes with tests
-2. Run `npm test` and `npm run build` locally before pushing
-3. Push, create PR — DeepSeek Code Review runs automatically
-4. Invoke `/post-pr-review` to loop through findings
-5. Merge when CI is green and all comments resolved
-6. Required CI: Type check + unit tests, DeepSeek CR
+2. **Bump the version** in `package.json` (semver) and `claude-code-plugin/claude-status-dashboard/.claude-plugin/plugin.json`
+3. Run `npm test` and `npm run build` locally before pushing
+4. Push, create PR — DeepSeek Code Review runs automatically
+5. Invoke `/post-pr-review` to loop through findings
+6. Merge when CI is green and all comments resolved
+7. Required CI: Version bump check, Type check + unit tests, DeepSeek CR
 
 ## Runtime notes
 

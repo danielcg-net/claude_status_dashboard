@@ -6,7 +6,7 @@ These hooks are intended for your global Claude Code user settings, so every rep
 
 - `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
 - `PreToolUse`, `PostToolUse`: `orange` (actively working)
-- `Notification`: `red` (needs attention)
+- `Notification`, `PermissionRequest`, `Elicitation`: `red` (needs attention)
 - `Stop`, `SubagentStop`: `green` (finished)
 - `StopFailure`: `red` (error)
 

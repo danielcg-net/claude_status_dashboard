@@ -41,6 +41,8 @@ const detailFor = () => {
   if (event === 'PreToolUse' && toolName) return `Claude is about to use ${toolName}`
   if (event === 'PostToolUse' && toolName) return `Claude used ${toolName}`
   if (event === 'Notification') return 'Claude needs attention'
+  if (event === 'PermissionRequest') return toolName ? `Claude is asking permission to use ${toolName}` : 'Claude is waiting for permission'
+  if (event === 'Elicitation') return 'Claude needs your input (MCP elicitation)'
   if (event === 'Stop') return reason ? `Claude stopped: ${reason}` : 'Claude finished running'
   if (event === 'StopFailure') return reason ? `Claude stopped with error: ${reason}` : 'Claude stopped with an error'
   if (event === 'SubagentStop') return reason ? `Subagent stopped: ${reason}` : 'Subagent finished running'
@@ -48,7 +50,7 @@ const detailFor = () => {
 }
 
 const statusFor = () => {
-  if (event === 'Notification') return 'red'
+  if (event === 'Notification' || event === 'PermissionRequest' || event === 'Elicitation') return 'red'
   if (event === 'Stop' || event === 'SubagentStop') return 'green'
   if (event === 'StopFailure') return 'red'
   if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'yellow'
