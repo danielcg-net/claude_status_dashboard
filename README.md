@@ -140,6 +140,11 @@ environment:
 
 If your Claude logs live elsewhere, update the volume source and `CLAUDE_CONFIG_DIR` accordingly.
 
+> **Linux note:** If you run Docker with `sudo`, `${HOME}` resolves to `/root`
+> instead of your user's home directory, so the volume mount points at the wrong
+> path. Fix: add your user to the `docker` group (`sudo usermod -aG docker $USER`,
+> then log out and back in) so you can run Docker without `sudo`.
+
 ### Hook environment variables
 
 Optional — the hook works without any of these:
