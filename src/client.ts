@@ -19,6 +19,8 @@ import {
   utcDateString,
 } from './client-utils.js'
 
+declare const __VERSION__: string
+
 type ApiState = {
   readonly sessions: readonly Session[]
   readonly redAlertAfterMs: number
@@ -36,6 +38,12 @@ type UsageSummary = {
   readonly error: string | null
 }
 
+type VersionInfo = {
+  readonly version: string
+  readonly latestVersion: string | null
+  readonly updateAvailable: boolean
+}
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
@@ -46,6 +54,8 @@ type AppState = ApiState & {
   readonly costWindow: CostWindow
   readonly selectedRepo: string | null
   readonly excludedRepos: ReadonlySet<string>
+  readonly updateAvailable: boolean
+  readonly latestVersion: string | null
 }
 
 type AlertSettings = {
@@ -145,6 +155,8 @@ const initialState: AppState = {
   costWindow: 'today',
   selectedRepo: null,
   excludedRepos: loadExcludedRepos(),
+  updateAvailable: false,
+  latestVersion: null,
 }
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
@@ -288,6 +300,8 @@ const apiFetch = async <T>(path: string, options?: RequestInit): Promise<T> => {
 const loadState = async (): Promise<ApiState> => apiFetch<ApiState>('/api/sessions')
 
 const loadUsage = async (): Promise<UsageSummary> => apiFetch<UsageSummary>('/api/usage')
+
+const loadVersion = async (): Promise<VersionInfo> => apiFetch<VersionInfo>('/api/version')
 
 const booleanAttrs = new Set(['checked', 'disabled', 'selected', 'readonly', 'multiple', 'hidden'])
 
@@ -957,13 +971,49 @@ const renderAlertControls = (): HTMLElement =>
     ]),
   ])
 
+const versionBannerDismissedKey = 'version-banner-dismissed'
+
+const renderUpdateBanner = (appState: AppState): HTMLElement | null => {
+  if (!appState.updateAvailable) return null
+  if (sessionStorage.getItem(versionBannerDismissedKey) === appState.latestVersion) return null
+
+  const latest = appState.latestVersion ?? 'unknown'
+  const current = __VERSION__
+
+  return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
+    createElement('div', { class: 'update-banner__body' }, [
+      createElement('span', { class: 'update-banner__icon' }, ['↑']),
+      createElement('span', {}, [
+        `A new version is available: `,
+        createElement('strong', {}, [`v${latest}`]),
+        ` (you are on v${current}). `,
+        createElement(
+          'a',
+          {
+            href: 'https://github.com/danielcg-net/claude_status_dashboard/releases',
+            target: '_blank',
+            rel: 'noopener',
+          },
+          ['View releases'],
+        ),
+      ]),
+    ]),
+    createElement('button', {
+      class: 'update-banner__dismiss',
+      type: 'button',
+      'aria-label': 'Dismiss update notification',
+      title: 'Dismiss',
+    }, ['✕']),
+  ])
+}
+
 const render = (): void => {
-  root.replaceChildren(
-    createElement('main', { class: 'shell' }, [
+  const banner = renderUpdateBanner(state)
+  const main = createElement('main', { class: 'shell' }, [
       createElement('header', { class: 'header' }, [
         createElement('div', {}, [
           createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
-          createElement('h1', {}, ['Claude Session Dashboard']),
+          createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
         ]),
         renderAlertControls(),
       ]),
@@ -1030,8 +1080,9 @@ const render = (): void => {
               return true
             })
             .map(renderSession)),
-    ]),
-  )
+    ])
+
+  root.replaceChildren(...[banner, main].filter((el): el is HTMLElement => el !== null))
 
   document.querySelector('#audio-toggle')?.addEventListener('click', () => {
     state = { ...state, audioEnabled: !state.audioEnabled }
@@ -1131,6 +1182,14 @@ const render = (): void => {
       render()
     })
   })
+
+  document.querySelector<HTMLButtonElement>('.update-banner__dismiss')?.addEventListener('click', () => {
+    if (state.latestVersion) {
+      sessionStorage.setItem(versionBannerDismissedKey, state.latestVersion)
+    }
+    state = { ...state, updateAvailable: false }
+    render()
+  })
 }
 
 const refresh = async (): Promise<void> => {
@@ -1153,6 +1212,18 @@ const refreshUsage = async (): Promise<void> => {
   }
 }
 
+const refreshVersion = async (): Promise<void> => {
+  try {
+    const info = await loadVersion()
+    if (info.latestVersion !== state.latestVersion) {
+      state = { ...state, updateAvailable: info.updateAvailable, latestVersion: info.latestVersion }
+      render()
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext
@@ -1162,5 +1233,7 @@ declare global {
 render()
 void refresh()
 void refreshUsage()
+void refreshVersion()
 window.setInterval(() => void refresh(), 2_000)
 window.setInterval(() => void refreshUsage(), 30_000)
+window.setInterval(() => void refreshVersion(), 1_800_000)
