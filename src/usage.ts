@@ -282,12 +282,22 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
   const generatedAt = new Date().toISOString()
 
   try {
-    const [dailyJson, instancesJson, blocksJson, sessionsJson] = await Promise.all([
+    const [dailyJson, instancesJson, blocksJson] = await Promise.all([
       runCcusageWithFallback('daily'),
       runCcusageWithFallback('daily', ['--instances']),
       runCcusageWithFallback('blocks'),
-      runCcusageWithFallback('session'),
     ])
+
+    // Session-level data is optional — older ccusage versions may not
+    // support the `session` subcommand, so we fetch it separately and
+    // gracefully degrade to an empty list on failure.
+    let sessionsJson: unknown = { sessions: [] }
+    try {
+      sessionsJson = await runCcusageWithFallback('session')
+    } catch {
+      // ccusage session unavailable — fall back to day-level matching
+    }
+
     const today = latestDayFrom(dailyJson)
 
     return {

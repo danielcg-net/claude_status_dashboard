@@ -235,11 +235,9 @@ describe('fetchUsageSummary', () => {
   })
 
   it('handles malformed JSON from ccusage', async () => {
-    mockExecFileAsync
-      .mockResolvedValueOnce({ stdout: 'not json' })
-      .mockResolvedValueOnce({ stdout: JSON.stringify(makeInstancesJson()) })
-      .mockResolvedValueOnce({ stdout: JSON.stringify(makeBlocksJson()) })
-      .mockResolvedValueOnce({ stdout: JSON.stringify(makeSessionsJson()) })
+    // Reject the first execFileAsync call so Promise.all fails before
+    // the fallback retry can consume extra mock slots.
+    mockExecFileAsync.mockRejectedValueOnce(new Error('ccusage crashed'))
     const result = await fetchUsageSummary()
     expect(result.available).toBe(false)
     expect(result.error).toBeDefined()

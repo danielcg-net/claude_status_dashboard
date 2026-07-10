@@ -508,9 +508,10 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
         byModel.set(b.modelName, (byModel.get(b.modelName) ?? 0) + b.cost)
       }
     }
-    return [...byModel.entries()]
+    const breakdowns = [...byModel.entries()]
       .sort(([, a], [, b]) => b - a)
       .map(([modelName, cost]) => ({ modelName, cost }))
+    return breakdowns.length > 0 ? breakdowns : null
   })()
   const models = sessionModels ?? aggregateModelBreakdowns(sessionDays, 'all')
 
