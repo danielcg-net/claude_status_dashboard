@@ -116,12 +116,50 @@ const makeBlocksJson = () => ({
   ],
 })
 
+const makeSessionsJson = () => ({
+  sessions: [
+    {
+      sessionId: 'session-aaa',
+      projectPath: '-Users-test-Private-Projects-my-app',
+      firstActivity: '2026-06-01T10:05:00Z',
+      lastActivity: '2026-06-01T10:25:00Z',
+      inputTokens: 400,
+      outputTokens: 200,
+      cacheCreationTokens: 50,
+      cacheReadTokens: 100,
+      totalTokens: 750,
+      totalCost: 0.015,
+      modelsUsed: ['claude-sonnet-4-5-20250929'],
+      modelBreakdowns: [
+        { modelName: 'claude-sonnet-4-5-20250929', cost: 0.015, inputTokens: 400, outputTokens: 200, cacheCreationTokens: 50, cacheReadTokens: 100 },
+      ],
+    },
+    {
+      sessionId: 'session-bbb',
+      projectPath: '-Users-test-Private-Projects-my-app',
+      firstActivity: '2026-06-01T14:00:00Z',
+      lastActivity: '2026-06-01T14:30:00Z',
+      inputTokens: 200,
+      outputTokens: 100,
+      cacheCreationTokens: 25,
+      cacheReadTokens: 50,
+      totalTokens: 375,
+      totalCost: 0.008,
+      modelsUsed: ['claude-sonnet-4-5-20250929'],
+      modelBreakdowns: [
+        { modelName: 'claude-sonnet-4-5-20250929', cost: 0.008, inputTokens: 200, outputTokens: 100, cacheCreationTokens: 25, cacheReadTokens: 50 },
+      ],
+    },
+  ],
+})
+
 describe('fetchUsageSummary', () => {
-  it('returns available summary with projects and active block', async () => {
+  it('returns available summary with projects, blocks, and sessions', async () => {
     mockExecFileAsync
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeInstancesJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeBlocksJson()) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(makeSessionsJson()) })
 
     const result = await fetchUsageSummary()
 
@@ -149,6 +187,14 @@ describe('fetchUsageSummary', () => {
     expect(result.blocks[0]?.isActive).toBe(false)
     expect(result.blocks[1]?.id).toBe('block-2')
     expect(result.blocks[1]?.isActive).toBe(true)
+
+    expect(result.sessions).toHaveLength(2)
+    expect(result.sessions[0]?.sessionId).toBe('session-aaa')
+    expect(result.sessions[0]?.totalCost).toBe(0.015)
+    expect(result.sessions[0]?.projectPath).toBe('-Users-test-Private-Projects-my-app')
+    expect(result.sessions[0]?.firstActivity).toBe('2026-06-01T10:05:00Z')
+    expect(result.sessions[1]?.sessionId).toBe('session-bbb')
+    expect(result.sessions[1]?.totalCost).toBe(0.008)
   })
 
   it('handles ccusage failure gracefully', async () => {
@@ -160,6 +206,7 @@ describe('fetchUsageSummary', () => {
     expect(result.projects).toEqual({})
     expect(result.activeBlock).toBeNull()
     expect(result.today).toBeNull()
+    expect(result.sessions).toEqual([])
   })
 
   it('handles empty projects gracefully', async () => {
@@ -167,10 +214,12 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.available).toBe(true)
     expect(Object.keys(result.projects)).toHaveLength(0)
     expect(result.activeBlock).toBeNull()
+    expect(result.sessions).toHaveLength(0)
   })
 
   it('handles missing daily data gracefully', async () => {
@@ -178,6 +227,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify({}) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeInstancesJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeBlocksJson()) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(makeSessionsJson()) })
     const result = await fetchUsageSummary()
     expect(result.available).toBe(true)
     expect(result.today).toBeNull()
@@ -185,10 +235,9 @@ describe('fetchUsageSummary', () => {
   })
 
   it('handles malformed JSON from ccusage', async () => {
-    mockExecFileAsync
-      .mockResolvedValueOnce({ stdout: 'not json' })
-      .mockResolvedValueOnce({ stdout: JSON.stringify(makeInstancesJson()) })
-      .mockResolvedValueOnce({ stdout: JSON.stringify(makeBlocksJson()) })
+    // Reject the first execFileAsync call so Promise.all fails before
+    // the fallback retry can consume extra mock slots.
+    mockExecFileAsync.mockRejectedValueOnce(new Error('ccusage crashed'))
     const result = await fetchUsageSummary()
     expect(result.available).toBe(false)
     expect(result.error).toBeDefined()
@@ -213,6 +262,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(dailyWithTokenCounts) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeInstancesJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeBlocksJson()) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(makeSessionsJson()) })
     const result = await fetchUsageSummary()
     expect(result.available).toBe(true)
     expect(result.totals.inputTokens).toBe(5000)
@@ -233,6 +283,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(json) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.today?.cacheCreationTokens).toBe(30)
     expect(result.today?.cacheReadTokens).toBe(20)
@@ -252,6 +303,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(json) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.today?.totalCost).toBe(0.008)
   })
@@ -268,6 +320,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(blocksJson) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.activeBlock?.totalCost).toBe(0.015)
   })
@@ -284,6 +337,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify(blocksJson) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.activeBlock?.totalCost).toBe(0.015)
   })
@@ -303,6 +357,7 @@ describe('fetchUsageSummary', () => {
       .mockResolvedValueOnce({ stdout: JSON.stringify(dailyWithZeroCost) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
       .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
     const result = await fetchUsageSummary()
     expect(result.today?.modelBreakdowns).toHaveLength(1)
     expect(result.today?.modelBreakdowns[0]?.cost).toBe(0)

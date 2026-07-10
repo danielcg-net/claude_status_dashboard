@@ -120,6 +120,80 @@ export const filterDaysBySessionTimeRange = (session: Session, days: readonly Us
   return days.filter((day) => day.date >= startDate && day.date <= endDate)
 }
 
+// ── ccusage session matching ────────────────────────────────────────────────────
+
+export type UsageSession = UsageTotals & {
+  readonly sessionId: string
+  readonly projectPath: string
+  readonly firstActivity: string
+  readonly lastActivity: string
+  readonly modelsUsed: readonly string[]
+  readonly modelBreakdowns: readonly ModelBreakdown[]
+}
+
+const normalizeUsageProjectKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+const sessionProjectCandidates = (session: Session): readonly string[] =>
+  [session.usageProject, session.id, session.name]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => [value, normalizeUsageProjectKey(value)])
+
+// Match ccusage sessions to a dashboard session by project + time overlap:
+// a ccusage session belongs to a dashboard session if its firstActivity falls
+// within the dashboard session's [createdAt, updatedAt] range AND the project
+// paths match (using the same fuzzy matching as findUsageProject).
+export const matchCCUsageSessions = (
+  session: Session,
+  ccusageSessions: readonly UsageSession[],
+): readonly UsageSession[] => {
+  const candidates = new Set(sessionProjectCandidates(session))
+  const sessionStartMs = Date.parse(session.createdAt)
+  const sessionEndMs = Date.parse(session.updatedAt)
+
+  if (Number.isNaN(sessionStartMs) || Number.isNaN(sessionEndMs)) {
+    return []
+  }
+
+  return ccusageSessions.filter((cs) => {
+    // Check project match
+    const csProjectKey = normalizeUsageProjectKey(cs.projectPath)
+    const projectMatch =
+      candidates.has(cs.projectPath) ||
+      candidates.has(csProjectKey) ||
+      [...candidates].some((c) => csProjectKey.endsWith(c) || cs.projectPath.endsWith(c))
+
+    if (!projectMatch) return false
+
+    // Check time overlap: ccusage session's firstActivity must fall within
+    // the dashboard session's time range.
+    const firstActivityMs = Date.parse(cs.firstActivity)
+    if (Number.isNaN(firstActivityMs)) return false
+
+    return firstActivityMs >= sessionStartMs && firstActivityMs <= sessionEndMs
+  })
+}
+
+// Aggregate totals from matched ccusage sessions. Returns null when no sessions
+// matched, so the caller can fall back to the day-filtering method.
+export const sumUsageSessions = (sessions: readonly UsageSession[]): UsageTotals | null => {
+  if (sessions.length === 0) return null
+  return sessions.reduce(
+    (totals, s) => ({
+      inputTokens: totals.inputTokens + s.inputTokens,
+      outputTokens: totals.outputTokens + s.outputTokens,
+      cacheCreationTokens: totals.cacheCreationTokens + s.cacheCreationTokens,
+      cacheReadTokens: totals.cacheReadTokens + s.cacheReadTokens,
+      totalTokens: totals.totalTokens + s.totalTokens,
+      totalCost: totals.totalCost + s.totalCost,
+    }),
+    emptyTotals,
+  )
+}
+
 export const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): readonly UsageDay[] => {
   if (costWindow === 'all') return days
 

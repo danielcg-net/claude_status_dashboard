@@ -48,6 +48,15 @@ type UsageBlock = {
   readonly modelsUsed: readonly string[]
 }
 
+type UsageSession = UsageTotals & {
+  readonly sessionId: string
+  readonly projectPath: string
+  readonly firstActivity: string
+  readonly lastActivity: string
+  readonly modelsUsed: readonly string[]
+  readonly modelBreakdowns: readonly ModelBreakdown[]
+}
+
 export type UsageSummary = {
   readonly available: boolean
   readonly generatedAt: string
@@ -56,6 +65,7 @@ export type UsageSummary = {
   readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
   readonly blocks: readonly UsageBlock[]
+  readonly sessions: readonly UsageSession[]
   readonly error: string | null
 }
 
@@ -158,6 +168,31 @@ const blockFrom = (value: unknown): UsageBlock | null => {
   }
 }
 
+const sessionFrom = (value: unknown): UsageSession | null => {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const totals = totalsFrom(value)
+
+  return {
+    ...totals,
+    sessionId: asString(value.sessionId),
+    projectPath: asString(value.projectPath),
+    firstActivity: asString(value.firstActivity),
+    lastActivity: asString(value.lastActivity),
+    modelsUsed: asStringArray(value.modelsUsed ?? value.models),
+    modelBreakdowns: asArray(value.modelBreakdowns)
+      .map(breakdownFrom)
+      .filter((b): b is ModelBreakdown => b !== null),
+  }
+}
+
+const allSessionsFrom = (json: unknown): readonly UsageSession[] => {
+  const records = isRecord(json) ? asArray(json.sessions ?? json.data) : asArray(json)
+  return records.map(sessionFrom).filter((s): s is UsageSession => s !== null)
+}
+
 const parseJson = (stdout: string): unknown => JSON.parse(stdout) as unknown
 
 const runCcusage = async (args: readonly string[]): Promise<unknown> => {
@@ -252,6 +287,17 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       runCcusageWithFallback('daily', ['--instances']),
       runCcusageWithFallback('blocks'),
     ])
+
+    // Session-level data is optional — older ccusage versions may not
+    // support the `session` subcommand, so we fetch it separately and
+    // gracefully degrade to an empty list on failure.
+    let sessionsJson: unknown = { sessions: [] }
+    try {
+      sessionsJson = await runCcusageWithFallback('session')
+    } catch {
+      // ccusage session unavailable — fall back to day-level matching
+    }
+
     const today = latestDayFrom(dailyJson)
 
     return {
@@ -262,6 +308,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       projects: projectsFromInstancesJson(instancesJson),
       activeBlock: activeBlockFrom(blocksJson),
       blocks: allBlocksFrom(blocksJson),
+      sessions: allSessionsFrom(sessionsJson),
       error: null,
     }
   } catch (error) {
@@ -273,6 +320,7 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
       projects: {},
       activeBlock: null,
       blocks: [],
+      sessions: [],
       error: error instanceof Error ? error.message : 'Unable to read ccusage data.',
     }
   }

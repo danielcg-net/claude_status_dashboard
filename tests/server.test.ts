@@ -13,6 +13,8 @@ vi.mocked(mockFetchUsageSummary).mockResolvedValue({
   today: null,
   projects: {},
   activeBlock: null,
+  blocks: [],
+  sessions: [],
   error: null,
 })
 
@@ -197,6 +199,8 @@ describe('GET /api/usage', () => {
       today: null,
       projects: {},
       activeBlock: null,
+      blocks: [],
+      sessions: [],
       error: null,
     })
 

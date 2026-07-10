@@ -5,14 +5,17 @@ import {
   type UsageBlock,
   type UsageDay,
   type UsageProject,
+  type UsageSession,
   type UsageTotals,
   costWindowDays,
   costWindowLabels,
   daysForWindow,
   emptyTotals,
   filterDaysBySessionTimeRange,
+  matchCCUsageSessions,
   parseUtcDateString,
   sumUsageDays,
+  sumUsageSessions,
   utcDateString,
 } from './client-utils.js'
 
@@ -29,6 +32,7 @@ type UsageSummary = {
   readonly projects: Readonly<Record<string, UsageProject>>
   readonly activeBlock: UsageBlock | null
   readonly blocks: readonly UsageBlock[]
+  readonly sessions: readonly UsageSession[]
   readonly error: string | null
 }
 
@@ -477,13 +481,39 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
     ])
   }
 
-  // Filter to only days within this session's time range, then show all of them.
-  // The global cost window applies to the usage summary and repo cards, not to
-  // individual session cards — sessions are already naturally time-bounded.
+  // Prefer ccusage session-level data when available: match individual
+  // conversation sessions by project + time overlap for precise per-session
+  // costs. Fall back to day-level filtering when ccusage session data is
+  // unavailable or no sessions match.
+  const ccusageSessions = state.usage?.sessions ?? []
+  const matchedSessions = ccusageSessions.length > 0
+    ? matchCCUsageSessions(session, ccusageSessions)
+    : []
+  const sessionTotals = sumUsageSessions(matchedSessions)
+
+  // Day-level fallback (used when session matching yields nothing, or for the
+  // daily bar chart which always shows day-level context).
   const sessionDays = filterDaysBySessionTimeRange(session, usageProject.days)
-  const totals = sumUsageDays(sessionDays)
+  const dayTotals = sumUsageDays(sessionDays)
+  const totals = sessionTotals ?? dayTotals
   const recentDays = recentUsageDays(sessionDays)
   const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
+
+  // Model breakdown: prefer from matched sessions, fall back to day aggregates.
+  const sessionModels = (() => {
+    if (matchedSessions.length === 0) return null
+    const byModel = new Map<string, number>()
+    for (const cs of matchedSessions) {
+      for (const b of cs.modelBreakdowns) {
+        byModel.set(b.modelName, (byModel.get(b.modelName) ?? 0) + b.cost)
+      }
+    }
+    const breakdowns = [...byModel.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([modelName, cost]) => ({ modelName, cost }))
+    return breakdowns.length > 0 ? breakdowns : null
+  })()
+  const models = sessionModels ?? aggregateModelBreakdowns(sessionDays, 'all')
 
   return createElement('div', { class: 'session-card__cost' }, [
     createElement('div', { class: 'session-card__usage' }, [
@@ -497,7 +527,6 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
         ]),
       ]),
     ...(() => {
-      const models = aggregateModelBreakdowns(sessionDays, 'all')
       if (models.length === 0) return [] as HTMLElement[]
       return [createElement('div', { class: 'session-card__models' },
         models.map((m) =>
