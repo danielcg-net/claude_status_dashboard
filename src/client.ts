@@ -456,13 +456,15 @@ const aggregateModelBreakdowns = (
     .map(([modelName, cost]) => ({ modelName, cost }))
 }
 
-const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
-  const sessionStart = parseIso(session.createdAt)
-  const sessionEnd = parseIso(session.updatedAt)
-  if (sessionStart === null || sessionEnd === null) return days
+const utcIsoDate = (isoString: string): string => isoString.slice(0, 10)
 
-  const startDate = localIsoDate(new Date(sessionStart))
-  const endDate = localIsoDate(new Date(sessionEnd))
+const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
+  if (!session.createdAt || !session.updatedAt) return days
+
+  // Use UTC dates from the ISO string to match ccusage day keys, which the
+  // server process reports in UTC regardless of the user's local timezone.
+  const startDate = utcIsoDate(session.createdAt)
+  const endDate = utcIsoDate(session.updatedAt)
 
   return days.filter((day) => day.date >= startDate && day.date <= endDate)
 }
