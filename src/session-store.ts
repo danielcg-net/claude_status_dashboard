@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { z } from 'zod'
 import { sessionStatuses, type Session, type SessionStore } from './domain.js'
 
@@ -23,11 +23,14 @@ export const evictStaleSessions = (sessions: SessionStore, ttlMs: number): Sessi
 }
 
 export const loadSessions = async (dataDir: string, ttlMs: number): Promise<SessionStore> => {
-  const filePath = join(dataDir, SESSION_FILE)
+  const filePath = join(resolve(dataDir), SESSION_FILE)
   try {
     const raw = await readFile(filePath, 'utf-8')
     const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return new Map()
+    if (!Array.isArray(parsed)) {
+      console.warn(`Session cache at ${filePath} is not an array — discarding.`)
+      return new Map()
+    }
     const entries = parsed
       .map((item) => {
         const result = sessionSchema.safeParse(item)
@@ -44,7 +47,7 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
 }
 
 export const saveSessions = async (dataDir: string, sessions: SessionStore): Promise<void> => {
-  const filePath = join(dataDir, SESSION_FILE)
+  const filePath = join(resolve(dataDir), SESSION_FILE)
   const tmpPath = `${filePath}.tmp`
   try {
     await mkdir(dataDir, { recursive: true })
