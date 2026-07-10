@@ -229,7 +229,9 @@ test.describe('session status lifecycle', () => {
 
     await request.delete(`/api/sessions/${session.id}`)
 
-    // After deletion, card should disappear on next poll
+    // After deletion, card should disappear on the next poll cycle (every 2 s).
+    // Playwright's toHaveCount(0) retries until the assertion passes (default 30 s
+    // timeout), so there is no need for an explicit sleep or manual wait.
     await expect(page.locator('.session-card').filter({ hasText: 'e2e-delete-me' })).toHaveCount(0)
   })
 })

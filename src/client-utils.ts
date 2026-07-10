@@ -69,7 +69,11 @@ export const costWindowLabels: Record<CostWindow, string> = {
   all: 'All',
 }
 
-export const costWindowDays: Partial<Record<CostWindow, number>> = {
+// All CostWindow values except 'today' and 'all' must have an entry here.
+// Using Exclude<> makes this an exhaustive record: TypeScript will error if a new
+// CostWindow variant is added without a corresponding day count, eliminating the
+// need for a silent fallback in daysForWindow.
+export const costWindowDays: Record<Exclude<CostWindow, 'today' | 'all'>, number> = {
   '2d': 2,
   '3d': 3,
   '7d': 7,
@@ -124,7 +128,7 @@ export const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow)
     return days.filter((day) => day.date === today)
   }
 
-  const windowDays = costWindowDays[costWindow] ?? 1
+  const windowDays = costWindowDays[costWindow]
   const cutoff = new Date()
   cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1))
   const cutoffDate = utcDateString(cutoff)
