@@ -1,61 +1,24 @@
-type SessionStatus = 'green' | 'yellow' | 'orange' | 'red'
-
-type Session = {
-  readonly id: string
-  readonly name: string
-  readonly usageProject: string | null
-  readonly status: SessionStatus
-  readonly detail: string
-  readonly createdAt: string
-  readonly updatedAt: string
-  readonly statusSince: string
-}
+import {
+  type CostWindow,
+  type Session,
+  type SessionStatus,
+  type UsageBlock,
+  type UsageDay,
+  type UsageProject,
+  type UsageTotals,
+  costWindowDays,
+  costWindowLabels,
+  daysForWindow,
+  emptyTotals,
+  filterDaysBySessionTimeRange,
+  parseUtcDateString,
+  sumUsageDays,
+  utcDateString,
+} from './client-utils.js'
 
 type ApiState = {
   readonly sessions: readonly Session[]
   readonly redAlertAfterMs: number
-}
-
-type UsageTotals = {
-  readonly inputTokens: number
-  readonly outputTokens: number
-  readonly cacheCreationTokens: number
-  readonly cacheReadTokens: number
-  readonly totalTokens: number
-  readonly totalCost: number
-}
-
-type ModelBreakdown = {
-  readonly modelName: string
-  readonly cost: number
-  readonly inputTokens: number
-  readonly outputTokens: number
-  readonly cacheCreationTokens: number
-  readonly cacheReadTokens: number
-}
-
-type UsageDay = UsageTotals & {
-  readonly date: string
-  readonly modelsUsed: readonly string[]
-  readonly modelBreakdowns: readonly ModelBreakdown[]
-}
-
-type UsageProject = {
-  readonly project: string
-  readonly totals: UsageTotals
-  readonly today: UsageDay | null
-  readonly days: readonly UsageDay[]
-}
-
-type UsageBlock = {
-  readonly id: string
-  readonly startTime: string
-  readonly endTime: string
-  readonly actualEndTime: string | null
-  readonly isActive: boolean
-  readonly totalTokens: number
-  readonly totalCost: number
-  readonly modelsUsed: readonly string[]
 }
 
 type UsageSummary = {
@@ -68,8 +31,6 @@ type UsageSummary = {
   readonly blocks: readonly UsageBlock[]
   readonly error: string | null
 }
-
-type CostWindow = 'today' | '2d' | '3d' | '7d' | '14d' | '30d' | '90d' | 'all'
 
 type AppState = ApiState & {
   readonly audioEnabled: boolean
@@ -182,38 +143,9 @@ const initialState: AppState = {
   excludedRepos: loadExcludedRepos(),
 }
 
-const costWindowLabels: Record<CostWindow, string> = {
-  today: 'Today',
-  '2d': '2 days',
-  '3d': '3 days',
-  '7d': '7 days',
-  '14d': '14 days',
-  '30d': '30 days',
-  '90d': '90 days',
-  all: 'All',
-}
-
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
 
 const MODEL_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#38bdf8', '#f87171'] as const
-
-const costWindowDays: Partial<Record<CostWindow, number>> = {
-  '2d': 2,
-  '3d': 3,
-  '7d': 7,
-  '14d': 14,
-  '30d': 30,
-  '90d': 90,
-}
-
-const emptyTotals: UsageTotals = {
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheCreationTokens: 0,
-  cacheReadTokens: 0,
-  totalTokens: 0,
-  totalCost: 0,
-}
 
 let state = initialState
 
@@ -387,38 +319,6 @@ const formatMoney = (value: number): string =>
     maximumFractionDigits: 2,
   }).format(value)
 
-
-const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): readonly UsageDay[] => {
-  if (costWindow === 'all') {
-    return days
-  }
-
-  if (costWindow === 'today') {
-    const today = utcDateString(new Date())
-    return days.filter((day) => day.date === today)
-  }
-
-  const windowDays = costWindowDays[costWindow] ?? 1
-  const cutoff = new Date()
-  cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1))
-  const cutoffDate = utcDateString(cutoff)
-
-  return days.filter((day) => day.date >= cutoffDate)
-}
-
-const sumUsageDays = (days: readonly UsageDay[]): UsageTotals =>
-  days.reduce(
-    (totals, day) => ({
-      inputTokens: totals.inputTokens + day.inputTokens,
-      outputTokens: totals.outputTokens + day.outputTokens,
-      cacheCreationTokens: totals.cacheCreationTokens + day.cacheCreationTokens,
-      cacheReadTokens: totals.cacheReadTokens + day.cacheReadTokens,
-      totalTokens: totals.totalTokens + day.totalTokens,
-      totalCost: totals.totalCost + day.totalCost,
-    }),
-    emptyTotals,
-  )
-
 const usageDaysForWindow = (usage: UsageSummary, costWindow: CostWindow): readonly UsageDay[] =>
   daysForWindow(
     Object.values(usage.projects)
@@ -447,23 +347,6 @@ const aggregateModelBreakdowns = (
   return [...byModel.entries()]
     .sort(([, a], [, b]) => b - a)
     .map(([modelName, cost]) => ({ modelName, cost }))
-}
-
-// ccusage day keys are always UTC dates — use UTC methods when comparing
-// against them to avoid off-by-one errors for users in non-UTC timezones.
-const utcDateString = (date: Date): string => date.toISOString().slice(0, 10)
-
-const parseUtcDateString = (isoString: string): string | null => {
-  const date = new Date(isoString)
-  return Number.isNaN(date.getTime()) ? null : utcDateString(date)
-}
-
-const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
-  const startDate = parseUtcDateString(session.createdAt)
-  const endDate = parseUtcDateString(session.updatedAt)
-  if (startDate === null || endDate === null) return days
-
-  return days.filter((day) => day.date >= startDate && day.date <= endDate)
 }
 
 const dateStringRegex = /^\d{4}-\d{2}-\d{2}$/
