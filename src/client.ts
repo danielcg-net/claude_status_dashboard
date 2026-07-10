@@ -387,13 +387,6 @@ const formatMoney = (value: number): string =>
     maximumFractionDigits: 2,
   }).format(value)
 
-const localIsoDate = (date: Date): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
 
 const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): readonly UsageDay[] => {
   if (costWindow === 'all') {
@@ -401,14 +394,14 @@ const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow): reado
   }
 
   if (costWindow === 'today') {
-    const today = localIsoDate(new Date())
+    const today = utcDateString(new Date())
     return days.filter((day) => day.date === today)
   }
 
   const windowDays = costWindowDays[costWindow] ?? 1
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - (windowDays - 1))
-  const cutoffDate = localIsoDate(cutoff)
+  cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1))
+  const cutoffDate = utcDateString(cutoff)
 
   return days.filter((day) => day.date >= cutoffDate)
 }
@@ -456,13 +449,19 @@ const aggregateModelBreakdowns = (
     .map(([modelName, cost]) => ({ modelName, cost }))
 }
 
-const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
-  const sessionStart = parseIso(session.createdAt)
-  const sessionEnd = parseIso(session.updatedAt)
-  if (sessionStart === null || sessionEnd === null) return days
+// ccusage day keys are always UTC dates — use UTC methods when comparing
+// against them to avoid off-by-one errors for users in non-UTC timezones.
+const utcDateString = (date: Date): string => date.toISOString().slice(0, 10)
 
-  const startDate = localIsoDate(new Date(sessionStart))
-  const endDate = localIsoDate(new Date(sessionEnd))
+const parseUtcDateString = (isoString: string): string | null => {
+  const date = new Date(isoString)
+  return Number.isNaN(date.getTime()) ? null : utcDateString(date)
+}
+
+const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
+  const startDate = parseUtcDateString(session.createdAt)
+  const endDate = parseUtcDateString(session.updatedAt)
+  if (startDate === null || endDate === null) return days
 
   return days.filter((day) => day.date >= startDate && day.date <= endDate)
 }
