@@ -109,38 +109,10 @@ test.describe('session card cost display', () => {
     await request.delete(`/api/sessions/${session.id}`)
   })
 
-  // Regression: session timestamps at e.g. 04:55 UTC would be shifted to
-  // the previous local date for users in UTC-negative timezones, causing
-  // filterDaysBySessionTimeRange to find no matching day → $0.00.
-  test('regression: session created before 06:00 UTC still shows today cost (non-UTC timezone simulation)', async ({
-    page,
-    request,
-  }) => {
-    const todayData = makeDay({ date: TODAY_UTC, totalCost: 1.82, totalTokens: 30_000 })
-
-    await page.route('/api/usage', (route) =>
-      route.fulfill({ json: makeUsageResponse(PROJECT_KEY, [todayData]) }),
-    )
-
-    // Register session with createdAt/updatedAt that are early UTC (would be
-    // previous local day for MDT UTC-6 users). We can't control the server's
-    // timestamp, but we can verify the card shows cost by using the session
-    // registered with today's date in its usageProject — the important thing
-    // is that the usage data for TODAY_UTC is returned and displayed.
-    const { session } = await (
-      await request.post('/api/sessions', {
-        data: { name: 'e2e-early-utc', usageProject: PROJECT_KEY, status: 'orange' },
-      })
-    ).json()
-
-    await page.goto('/')
-    const card = page.locator('.session-card').filter({ hasText: 'e2e-early-utc' })
-    await expect(card).toBeVisible()
-    await expect(card).not.toContainText('No usage data')
-    await expect(card).toContainText('$1.82')
-
-    await request.delete(`/api/sessions/${session.id}`)
-  })
+  // Note: the UTC-negative timezone regression (session at 04:55 UTC showing $0.00)
+  // is fully covered by the unit tests in tests/client-date-filter.test.ts which
+  // control timestamps precisely. An E2E test cannot reliably reproduce it since
+  // the server assigns createdAt at runtime.
 })
 
 // ── cost window filter ────────────────────────────────────────────────────────
@@ -173,7 +145,7 @@ test.describe('cost window filter (Costs by repo)', () => {
 
     // Regression: "Today" used localIsoDate() which gave the wrong date for
     // UTC-negative timezones — the repo card would disappear from Today filter.
-    await expect(repoCard).toBeVisible({ timeout: 5000 })
+    await expect(repoCard).toBeVisible()
     await expect(repoCard).toContainText('$1.23')
     await expect(repoCard).not.toContainText('$5.00')
 
@@ -200,7 +172,7 @@ test.describe('cost window filter (Costs by repo)', () => {
     await page.locator('.usage__window', { hasText: '2 days' }).click()
 
     const repoCard = page.locator('.project-card').filter({ hasText: 'filter-project' })
-    await expect(repoCard).toBeVisible({ timeout: 5000 })
+    await expect(repoCard).toBeVisible()
     // Both days should contribute to the total ($4.50)
     await expect(repoCard).toContainText('$4.50')
 
@@ -258,8 +230,6 @@ test.describe('session status lifecycle', () => {
     await request.delete(`/api/sessions/${session.id}`)
 
     // After deletion, card should disappear on next poll
-    await expect(page.locator('.session-card').filter({ hasText: 'e2e-delete-me' })).toHaveCount(0, {
-      timeout: 10_000,
-    })
+    await expect(page.locator('.session-card').filter({ hasText: 'e2e-delete-me' })).toHaveCount(0)
   })
 })

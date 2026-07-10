@@ -1,75 +1,13 @@
 import { describe, it, expect } from 'vitest'
-
-// Pure utility functions inlined from src/client.ts for isolated unit testing.
-// Keep these in sync with the source — if you rename/change them, update here too.
-
-// ── helpers under test ────────────────────────────────────────────────────────
-
-const utcDateString = (date: Date): string => date.toISOString().slice(0, 10)
-
-const parseUtcDateString = (isoString: string): string | null => {
-  const date = new Date(isoString)
-  return Number.isNaN(date.getTime()) ? null : utcDateString(date)
-}
-
-type UsageTotals = {
-  readonly inputTokens: number
-  readonly outputTokens: number
-  readonly cacheCreationTokens: number
-  readonly cacheReadTokens: number
-  readonly totalTokens: number
-  readonly totalCost: number
-}
-
-type UsageDay = UsageTotals & {
-  readonly date: string
-  readonly modelsUsed: readonly string[]
-  readonly modelBreakdowns: readonly unknown[]
-}
-
-type Session = {
-  readonly id: string
-  readonly name: string
-  readonly createdAt: string
-  readonly updatedAt: string
-  readonly status: string
-  readonly detail: string
-  readonly statusSince: string
-  readonly usageProject: string | null
-}
-
-type CostWindow = 'today' | '2days' | '3days' | '7days' | '14days' | '30days' | '90days' | 'all'
-
-const costWindowDays: Partial<Record<CostWindow, number>> = {
-  '2days': 2,
-  '3days': 3,
-  '7days': 7,
-  '14days': 14,
-  '30days': 30,
-  '90days': 90,
-}
-
-const filterDaysBySessionTimeRange = (session: Session, days: readonly UsageDay[]): readonly UsageDay[] => {
-  const startDate = parseUtcDateString(session.createdAt)
-  const endDate = parseUtcDateString(session.updatedAt)
-  if (startDate === null || endDate === null) return days
-  return days.filter((day) => day.date >= startDate && day.date <= endDate)
-}
-
-const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow, now: Date): readonly UsageDay[] => {
-  if (costWindow === 'all') return days
-
-  if (costWindow === 'today') {
-    const today = utcDateString(now)
-    return days.filter((day) => day.date === today)
-  }
-
-  const windowDays = costWindowDays[costWindow] ?? 1
-  const cutoff = new Date(now)
-  cutoff.setUTCDate(cutoff.getUTCDate() - (windowDays - 1))
-  const cutoffDate = utcDateString(cutoff)
-  return days.filter((day) => day.date >= cutoffDate)
-}
+import {
+  type CostWindow,
+  type Session,
+  type UsageDay,
+  daysForWindow,
+  filterDaysBySessionTimeRange,
+  parseUtcDateString,
+  utcDateString,
+} from '../src/client-utils.js'
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
@@ -122,7 +60,7 @@ describe('parseUtcDateString', () => {
     expect(parseUtcDateString('not-a-date')).toBeNull()
   })
 
-  it('returns null for a random string that Date happens to parse weirdly', () => {
+  it('returns null for "undefined" string', () => {
     expect(parseUtcDateString('undefined')).toBeNull()
   })
 })
@@ -196,10 +134,35 @@ describe('filterDaysBySessionTimeRange', () => {
 })
 
 // ── daysForWindow ─────────────────────────────────────────────────────────────
+// daysForWindow uses new Date() internally, so we inject a fixed "now" by
+// temporarily overriding global Date. Vitest runs in Node, so this is safe.
+
+const withFakeNow = <T>(isoNow: string, fn: () => T): T => {
+  const RealDate = globalThis.Date
+  const fakeMs = RealDate.parse(isoNow)
+  // Minimal Date stub: zero-arg new Date() returns fixed instant; everything
+  // else delegates to the real implementation.
+  const FakeDate = new Proxy(RealDate, {
+    construct(target, args) {
+      return args.length === 0 ? new target(fakeMs) : new target(...(args as ConstructorParameters<typeof Date>))
+    },
+    get(target, prop) {
+      if (prop === 'now') return () => fakeMs
+      const val = Reflect.get(target, prop)
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  })
+  globalThis.Date = FakeDate as unknown as typeof Date
+  try {
+    return fn()
+  } finally {
+    globalThis.Date = RealDate
+  }
+}
 
 describe('daysForWindow', () => {
-  // Simulate "now" as 2026-07-10T14:00:00Z (UTC-6 local = 2026-07-10T08:00 MDT)
-  const NOW = new Date('2026-07-10T14:00:00.000Z')
+  // "now" = 2026-07-10T14:00:00Z (UTC-6 local = 2026-07-10T08:00 MDT)
+  const NOW_ISO = '2026-07-10T14:00:00.000Z'
 
   const days = [
     day('2026-07-01'),
@@ -210,49 +173,57 @@ describe('daysForWindow', () => {
     day('2026-07-10'),
   ]
 
+  const w = (window: CostWindow) => withFakeNow(NOW_ISO, () => daysForWindow(days, window))
+
   it('"all" returns every day', () => {
-    expect(daysForWindow(days, 'all', NOW)).toHaveLength(6)
+    expect(w('all')).toHaveLength(6)
   })
 
   it('"today" returns only UTC today', () => {
-    const result = daysForWindow(days, 'today', NOW)
-    expect(result.map((d) => d.date)).toEqual(['2026-07-10'])
+    expect(w('today').map((d) => d.date)).toEqual(['2026-07-10'])
   })
 
-  it('"2days" returns today and yesterday', () => {
-    const result = daysForWindow(days, '2days', NOW)
-    expect(result.map((d) => d.date)).toEqual(['2026-07-09', '2026-07-10'])
+  it('"2d" returns today and yesterday', () => {
+    expect(w('2d').map((d) => d.date)).toEqual(['2026-07-09', '2026-07-10'])
   })
 
-  it('"7days" returns days within last 7 UTC days', () => {
-    const result = daysForWindow(days, '7days', NOW)
-    expect(result.map((d) => d.date)).toEqual(['2026-07-04', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'])
+  it('"7d" returns days within last 7 UTC days', () => {
+    expect(w('7d').map((d) => d.date)).toEqual(['2026-07-04', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'])
   })
 
-  it('"3days" boundary is inclusive', () => {
-    const result = daysForWindow(days, '3days', NOW)
-    // 2026-07-08, 2026-07-09, 2026-07-10
-    expect(result.map((d) => d.date)).toEqual(['2026-07-08', '2026-07-09', '2026-07-10'])
+  it('"3d" boundary is inclusive', () => {
+    // cutoff = 2026-07-08
+    expect(w('3d').map((d) => d.date)).toEqual(['2026-07-08', '2026-07-09', '2026-07-10'])
   })
 
   it('returns empty array when no days fall in window', () => {
-    const future = new Date('2026-08-01T00:00:00.000Z')
-    expect(daysForWindow(days, 'today', future)).toHaveLength(0)
+    const result = withFakeNow('2026-08-01T00:00:00.000Z', () => daysForWindow(days, 'today'))
+    expect(result).toHaveLength(0)
   })
 
   // Regression: localIsoDate() with MDT (UTC-6) would produce '2026-07-09'
   // as "today" while ccusage keys the day as '2026-07-10', hiding the repo
   // from the Today filter.
   it('regression: "today" uses UTC date, not local — matches ccusage day key at 08:00 MDT', () => {
-    // 08:00 MDT = 14:00 UTC — UTC date is still 2026-07-10
-    const result = daysForWindow(days, 'today', NOW)
-    expect(result.map((d) => d.date)).toEqual(['2026-07-10'])
+    // 08:00 MDT = 14:00 UTC, UTC date is still 2026-07-10
+    expect(w('today').map((d) => d.date)).toEqual(['2026-07-10'])
   })
 
-  it('regression: "today" with midnight UTC boundary does not bleed into previous day', () => {
-    // Exactly midnight UTC — still 2026-07-10
-    const midnight = new Date('2026-07-10T00:00:00.000Z')
-    const result = daysForWindow(days, 'today', midnight)
+  it('regression: "today" with midnight UTC does not bleed into previous day', () => {
+    const result = withFakeNow('2026-07-10T00:00:00.000Z', () => daysForWindow(days, 'today'))
     expect(result.map((d) => d.date)).toEqual(['2026-07-10'])
+  })
+})
+
+// ── utcDateString ─────────────────────────────────────────────────────────────
+
+describe('utcDateString', () => {
+  it('formats a UTC midnight Date as YYYY-MM-DD', () => {
+    expect(utcDateString(new Date('2026-07-10T00:00:00.000Z'))).toBe('2026-07-10')
+  })
+
+  it('uses UTC date regardless of local time offset', () => {
+    // 2026-07-09T23:30:00Z — still 2026-07-09 in UTC
+    expect(utcDateString(new Date('2026-07-09T23:30:00.000Z'))).toBe('2026-07-09')
   })
 })
