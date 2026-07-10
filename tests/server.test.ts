@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { getVersion } from '../src/version.js'
 
 const mockFetchUsageSummary = vi.hoisted(() => vi.fn())
 const mockCheckLatestVersion = vi.hoisted(() => vi.fn())
@@ -253,12 +254,13 @@ describe('GET /api/version', () => {
   })
 
   it('does not report updateAvailable when latest equals current', async () => {
-    mockCheckLatestVersion.mockResolvedValueOnce('0.1.0')
+    const currentVersion = getVersion()
+    mockCheckLatestVersion.mockResolvedValueOnce(currentVersion)
 
     const res = await app.request('/api/version')
     const body = await res.json()
-    expect(body.version).toBe('0.1.0')
-    expect(body.latestVersion).toBe('0.1.0')
+    expect(body.version).toBe(currentVersion)
+    expect(body.latestVersion).toBe(currentVersion)
     expect(body.updateAvailable).toBe(false)
   })
 
