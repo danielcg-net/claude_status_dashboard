@@ -1215,7 +1215,7 @@ const refreshUsage = async (): Promise<void> => {
 const refreshVersion = async (): Promise<void> => {
   try {
     const info = await loadVersion()
-    if (info.updateAvailable !== state.updateAvailable || info.latestVersion !== state.latestVersion) {
+    if (info.latestVersion !== state.latestVersion) {
       state = { ...state, updateAvailable: info.updateAvailable, latestVersion: info.latestVersion }
       render()
     }

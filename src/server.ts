@@ -37,6 +37,7 @@ const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ??
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
 const versionCheckUrl = process.env.VERSION_CHECK_URL ?? 'https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/package.json'
 const versionCheckTtlMs = Number.parseInt(process.env.VERSION_CHECK_TTL_MS ?? '3600000', 10)
+const versionCheckEnabled = (process.env.VERSION_CHECK_ENABLED ?? 'true') !== 'false'
 let versionCache: { readonly expiresAt: number; readonly latestVersion: string | null } | null = null
 
 // Serializes all writes: each save reads state.sessions at execution time so it
@@ -70,7 +71,7 @@ app.get('/api/version', async (context) => {
   const currentVersion = getVersion()
 
   if (!versionCache || Date.now() >= versionCache.expiresAt) {
-    const latestVersion = await checkLatestVersion(versionCheckUrl)
+    const latestVersion = versionCheckEnabled ? await checkLatestVersion(versionCheckUrl) : null
     versionCache = {
       expiresAt: Date.now() + versionCheckTtlMs,
       latestVersion,

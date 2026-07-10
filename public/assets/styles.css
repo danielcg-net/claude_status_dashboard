@@ -1,5 +1,5 @@
 :root {
-  
+
   color-scheme: dark;
   --bg: #101114;
   --panel: #181b20;
@@ -12,6 +12,7 @@
   --orange: #f5a524;
   --red: #ff4d5e;
   --blue: #7db7ff;
+  --blue-hover: #a0cfff;
 }
 
 * {
@@ -1082,7 +1083,7 @@ h1 {
 }
 
 .update-banner a:hover {
-  color: #a0cfff;
+  color: var(--blue-hover);
 }
 
 .update-banner__dismiss {
