@@ -61,6 +61,15 @@ describe('evictStaleSessions', () => {
     expect(result.size).toBe(0)
   })
 
+  it('keeps a session whose updatedAt is exactly at the cutoff boundary', () => {
+    const ttlMs = 7 * 24 * 60 * 60 * 1000
+    const exactCutoff = new Date(Date.now() - ttlMs).toISOString()
+    const boundary = makeSession({ id: 'boundary', updatedAt: exactCutoff })
+    const store: SessionStore = new Map([['boundary', boundary]])
+    const result = evictStaleSessions(store, ttlMs)
+    expect(result.has('boundary')).toBe(true)
+  })
+
   it('does not mutate the original store', () => {
     const old = makeSession({ id: 'old', updatedAt: new Date(0).toISOString() })
     const store: SessionStore = new Map([['old', old]])

@@ -157,14 +157,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     }
   }, evictIntervalMs)
 
-  const shutdown = (): void => {
-    clearInterval(evictTimer)
-    process.exit(0)
-  }
-  process.once('SIGTERM', shutdown)
-  process.once('SIGINT', shutdown)
-
-  serve(
+  const server = serve(
     {
       fetch: app.fetch,
       port,
@@ -174,4 +167,13 @@ if (isMain || process.env.NODE_ENV !== 'test') {
       console.log(`Claude status dashboard listening on http://${info.address}:${info.port}`)
     },
   )
+
+  const shutdown = (): void => {
+    clearInterval(evictTimer)
+    server.close()
+    // Drain any pending saves before letting the process exit naturally.
+    saveQueue.catch(() => {}).finally(() => process.exit(0))
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
 }
