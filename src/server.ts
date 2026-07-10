@@ -170,9 +170,9 @@ if (isMain || process.env.NODE_ENV !== 'test') {
 
   const shutdown = (): void => {
     clearInterval(evictTimer)
-    server.close()
-    // Drain any pending saves before letting the process exit naturally.
-    saveQueue.catch(() => {}).finally(() => process.exit(0))
+    // Wait for open connections to drain, then flush saves before exiting.
+    const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()))
+    Promise.all([serverClosed, saveQueue.catch(() => {})]).finally(() => process.exit(0))
   }
   process.once('SIGTERM', shutdown)
   process.once('SIGINT', shutdown)
