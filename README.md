@@ -19,7 +19,21 @@ Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks re
 
 ## Quick Start
 
-**Prerequisites:** Docker, `curl`
+**Prerequisites:** Docker, `git`, Claude Code CLI
+
+### One-liner install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/install.sh | bash
+```
+
+This clones the repo to `~/.claude-status-dashboard`, starts the Docker container, and installs the Claude Code plugin globally. Then skip to [Step 3](#step-3--start-a-claude-code-session) below.
+
+> To install to a custom directory: `CLAUDE_DASHBOARD_DIR=/your/path bash <(curl -fsSL ...)`
+
+---
+
+### Manual setup
 
 ### Step 1 — Start the dashboard
 
