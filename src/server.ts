@@ -39,7 +39,9 @@ let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } |
 // always reflects the latest in-memory state even when multiple mutations queue up.
 let saveQueue: Promise<void> = Promise.resolve()
 const enqueueSave = (): void => {
-  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch(() => {})
+  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch((err) => {
+    console.error('Failed to persist sessions:', err)
+  })
 }
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {

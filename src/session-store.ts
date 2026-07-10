@@ -37,7 +37,7 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
     return evictStaleSessions(new Map(entries), ttlMs)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.error('Failed to load sessions from cache:', error)
+      console.error(`Failed to load sessions from cache (${filePath}):`, error)
     }
     return new Map()
   }
@@ -48,10 +48,15 @@ export const saveSessions = async (dataDir: string, sessions: SessionStore): Pro
   const tmpPath = `${filePath}.tmp`
   try {
     await mkdir(dataDir, { recursive: true })
+  } catch (error) {
+    console.error(`Failed to create session cache directory (${dataDir}):`, error)
+    return
+  }
+  try {
     await writeFile(tmpPath, JSON.stringify([...sessions.values()], null, 2), 'utf-8')
     await rename(tmpPath, filePath)
   } catch (error) {
-    console.error('Failed to save sessions to cache:', error)
+    console.error(`Failed to save sessions to cache (${filePath}):`, error)
     await unlink(tmpPath).catch(() => undefined)
   }
 }
