@@ -149,13 +149,20 @@ if (isMain || process.env.NODE_ENV !== 'test') {
   const sessions = await loadSessions(dataDir, sessionTtlMs)
   state = { sessions }
 
-  setInterval(() => {
+  const evictTimer = setInterval(() => {
     const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
     if (evicted.size !== state.sessions.size) {
       state = { sessions: evicted }
       enqueueSave()
     }
   }, evictIntervalMs)
+
+  const shutdown = (): void => {
+    clearInterval(evictTimer)
+    process.exit(0)
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
 
   serve(
     {

@@ -9,9 +9,9 @@ const sessionSchema = z.object({
   usageProject: z.string().nullable(),
   status: z.enum(sessionStatuses),
   detail: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  statusSince: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  statusSince: z.string().datetime(),
 })
 
 const SESSION_FILE = 'sessions.json'
@@ -32,9 +32,13 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
       return new Map()
     }
     const entries = parsed
-      .map((item) => {
+      .map((item, index) => {
         const result = sessionSchema.safeParse(item)
-        return result.success ? ([result.data.id, result.data] as const) : null
+        if (!result.success) {
+          console.warn(`Skipping invalid session entry at index ${index} in ${filePath}`)
+          return null
+        }
+        return [result.data.id, result.data] as const
       })
       .filter((entry): entry is readonly [string, Session] => entry !== null)
     return evictStaleSessions(new Map(entries), ttlMs)
