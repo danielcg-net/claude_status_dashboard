@@ -11,6 +11,8 @@ The plugin registers hooks for:
 - `PreToolUse`
 - `PostToolUse`
 - `Notification`
+- `PermissionRequest`
+- `Elicitation`
 - `Stop`
 - `StopFailure`
 - `SubagentStop`
@@ -19,7 +21,7 @@ Status mapping:
 
 - `SessionStart`, `UserPromptSubmit`: `yellow` (idle at prompt)
 - `PreToolUse`, `PostToolUse`: `orange` (actively working)
-- `Notification`: `red` (needs attention)
+- `Notification`, `PermissionRequest`, `Elicitation`: `red` (needs attention)
 - `Stop`, `SubagentStop`: `green` (finished)
 - `StopFailure`: `red` (error)
 

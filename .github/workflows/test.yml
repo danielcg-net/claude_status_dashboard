@@ -17,6 +17,76 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version-check:
+    name: Version bump check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Check version bump
+        run: |
+          set -euo pipefail
+
+          pr_version=$(node -p "require('./package.json').version")
+          echo "PR version: ${pr_version}"
+
+          # Fetch base branch version via GitHub API to avoid full checkout
+          base_version=$(curl -sSf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.raw+json" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/contents/package.json?ref=${{ github.base_ref }}" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || echo "")
+
+          if [ -z "${base_version}" ]; then
+            echo "WARNING: Could not determine base version from ${{ github.base_ref }}. Skipping check."
+            exit 0
+          fi
+
+          echo "Base version: ${base_version}"
+
+          compare_versions() {
+            node -e "
+              const [a, b] = ['$1', '$2'].map(v => v.split('.').map(Number));
+              const len = Math.max(a.length, b.length);
+              for (let i = 0; i < len; i++) {
+                const av = a[i] ?? 0, bv = b[i] ?? 0;
+                if (av > bv) { process.exit(1); return; }
+                if (av < bv) { process.exit(2); return; }
+              }
+              process.exit(0);
+            "
+          }
+
+          compare_versions "${pr_version}" "${base_version}" || cmp_code=$?
+          case ${cmp_code:-0} in
+            1) echo "Version bump OK: ${pr_version} > ${base_version}" ;;
+            2) echo "ERROR: Version went backwards! PR version ${pr_version} < base version ${base_version}."; exit 1 ;;
+            0) echo "ERROR: Version must be bumped. PR version ${pr_version} is the same as base version ${base_version}."; exit 1 ;;
+            *) echo "ERROR: Unexpected comparison result."; exit 1 ;;
+          esac
+
+      - name: Check plugin version sync
+        run: |
+          set -euo pipefail
+
+          pkg_version=$(node -p "require('./package.json').version")
+          plugin_version=$(node -p "require('./claude-code-plugin/claude-status-dashboard/.claude-plugin/plugin.json').version")
+
+          echo "package.json version: ${pkg_version}"
+          echo "plugin.json version:   ${plugin_version}"
+
+          if [ "${pkg_version}" != "${plugin_version}" ]; then
+            echo "ERROR: plugin.json version (${plugin_version}) must match package.json version (${pkg_version})."
+            exit 1
+          fi
+          echo "Plugin version sync OK."
+
   test:
     name: Type check and unit tests
     runs-on: ubuntu-latest
