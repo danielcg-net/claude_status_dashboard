@@ -104,7 +104,7 @@ test.describe('session card cost display', () => {
     await page.goto('/')
     const card = page.locator('.session-card').filter({ hasText: 'e2e-no-usage' })
     await expect(card).toBeVisible()
-    await expect(card).toContainText('No usage data')
+    await expect(card).toContainText('No ccusage project match')
 
     await request.delete(`/api/sessions/${session.id}`)
   })
@@ -141,7 +141,7 @@ test.describe('cost window filter (Costs by repo)', () => {
     // Switch to Today filter
     await page.locator('.usage__window', { hasText: 'Today' }).click()
 
-    const repoCard = page.locator('.project-card').filter({ hasText: 'filter-project' })
+    const repoCard = page.locator('.repo-card').filter({ hasText: 'filter-project' })
 
     // Regression: "Today" used localIsoDate() which gave the wrong date for
     // UTC-negative timezones — the repo card would disappear from Today filter.
@@ -171,7 +171,7 @@ test.describe('cost window filter (Costs by repo)', () => {
     await page.goto('/')
     await page.locator('.usage__window', { hasText: '2 days' }).click()
 
-    const repoCard = page.locator('.project-card').filter({ hasText: 'filter-project' })
+    const repoCard = page.locator('.repo-card').filter({ hasText: 'filter-project' })
     await expect(repoCard).toBeVisible()
     // Both days should contribute to the total ($4.50)
     await expect(repoCard).toContainText('$4.50')
