@@ -67,6 +67,7 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
   - **PATCH** (`0.0.1`): bug fixes, documentation, internal refactors, CI changes.
 - The version is read at runtime by `src/version.ts` (server) and embedded at build time by `scripts/build-client.mjs` (frontend `__VERSION__`).
 - When bumping `package.json`, also bump the version in `claude-code-plugin/claude-status-dashboard/.claude-plugin/plugin.json` to match. CI validates they stay in sync.
+- On merge to `main`, the [Release workflow](.github/workflows/release.yml) auto-creates a tag and GitHub Release from the new version.
 
 ## PR process
 
@@ -77,6 +78,31 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 5. Invoke `/post-pr-review` to loop through findings
 6. Merge when CI is green and all comments resolved
 7. Required CI: Version bump check, Type check + unit tests, DeepSeek CR
+8. When merged, the Release workflow auto-creates a GitHub Release with release notes (see below)
+
+## Releases
+
+Releases are created automatically when a PR is merged to `main`. The [Release workflow](.github/workflows/release.yml) reads the version from `package.json`, creates a matching `vX.Y.Z` tag, and publishes a GitHub Release with auto-generated release notes.
+
+### How release notes are generated
+
+GitHub auto-generates release notes from the PRs merged since the last release. To make these notes useful:
+
+- **Write PR descriptions that work as changelog entries.** The PR description becomes the release-note bullet point. Start with a one-sentence summary, then add details. Avoid references to internal review comments or CI — describe the change from the user's perspective.
+- **Label every PR** with one of: `feature` / `enhancement`, `fix` / `bug`, `documentation` / `docs`, `chore` / `maintenance` / `refactor` / `ci`, or `breaking` / `breaking-change`. Labels control which category the PR appears under in the release notes (see [`.github/release.yml`](.github/release.yml)).
+- **First release after a dry spell?** GitHub's auto-generation covers all PRs since the last tag — there's nothing special to do.
+
+### Manual release
+
+If the automatic workflow fails or you need to re-create a release:
+
+```bash
+gh release create v$(node -p "require('./package.json').version") \
+  --generate-notes \
+  --title "v$(node -p "require('./package.json').version")"
+```
+
+To edit release notes after creation, go to the [Releases page](https://github.com/danielcg-net/claude_status_dashboard/releases) and click "Edit release."
 
 ## Runtime notes
 
