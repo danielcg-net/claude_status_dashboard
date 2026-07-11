@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
-import { sessionStatuses, type Session, type SessionStore } from './domain.js'
+import { migrateStatus, sessionStatuses, type Session, type SessionStore } from './domain.js'
 
 const sessionSchema = z.object({
   id: z.string(),
@@ -32,6 +32,16 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
       return new Map()
     }
     const entries = parsed
+      .map((item: unknown) => {
+        // Migrate legacy color statuses to semantic names (v0.4.x → v0.5.0).
+        if (typeof item === 'object' && item !== null && 'status' in item) {
+          const record = item as Record<string, unknown>
+          if (typeof record.status === 'string') {
+            return { ...record, status: migrateStatus(record.status) }
+          }
+        }
+        return item
+      })
       .map((item, index) => {
         const result = sessionSchema.safeParse(item)
         if (!result.success) {

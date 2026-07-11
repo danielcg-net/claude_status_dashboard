@@ -19,7 +19,7 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
-import { eventForStatus, getNotifyConfig, notify, setNotifyConfig } from './notify.js'
+import { getNotifyConfig, notify, setNotifyConfig } from './notify.js'
 import {
   loadNotifySettings,
   notifySettingsSchema,
@@ -151,9 +151,13 @@ app.post('/api/sessions', async (context) => {
   // Fire notifications on session lifecycle events (fire-and-forget).
   if (!previous) {
     notify('started', session)
-  } else if (previous.status !== session.status) {
-    const event = eventForStatus(session.status)
-    if (event) notify(event, session)
+  }
+  // Always fire status-based events when a status transition occurs,
+  // including the initial status for new sessions — 'else if' here
+  // would skip e.g. 'idle' for a brand-new idle session, so a user
+  // who only subscribes to state-based events would never be notified.
+  if (!previous || previous.status !== session.status) {
+    notify(session.status, session)
   }
 
   return context.json({ session }, 201)
@@ -172,8 +176,7 @@ app.patch('/api/sessions/:id', async (context) => {
 
   // Fire notification on status change (fire-and-forget).
   if (previous && previous.status !== session.status) {
-    const event = eventForStatus(session.status)
-    if (event) notify(event, session)
+    notify(session.status, session)
   }
 
   enqueueSave()

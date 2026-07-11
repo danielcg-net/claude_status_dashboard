@@ -9,7 +9,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   id: 'test-id',
   name: 'Test Session',
   usageProject: null,
-  status: 'green',
+  status: 'finished',
   detail: 'done',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -80,7 +80,7 @@ describe('evictStaleSessions', () => {
 
 describe('saveSessions / loadSessions round-trip', () => {
   it('persists and reloads sessions faithfully', async () => {
-    const session = makeSession({ id: 'abc', name: 'My Session', status: 'red' })
+    const session = makeSession({ id: 'abc', name: 'My Session', status: 'attention' })
     const store: SessionStore = new Map([['abc', session]])
     await saveSessions(tmpDir, store)
     const loaded = await loadSessions(tmpDir, 7 * 24 * 60 * 60 * 1000)
@@ -118,6 +118,38 @@ describe('saveSessions / loadSessions round-trip', () => {
     const result = await loadSessions(tmpDir, 7 * 24 * 60 * 60 * 1000)
     expect(result.size).toBe(1)
     expect(result.has('good')).toBe(true)
+  })
+
+  it('migrates legacy color statuses to semantic names on load', async () => {
+    const { writeFile } = await import('node:fs/promises')
+    // Simulate a sessions.json written by a pre-0.5.0 version with color names
+    const legacy = [
+      {
+        id: 'legacy-green',
+        name: 'Old Green',
+        usageProject: null,
+        status: 'green',
+        detail: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statusSince: new Date().toISOString(),
+      },
+      {
+        id: 'legacy-orange',
+        name: 'Old Orange',
+        usageProject: null,
+        status: 'orange',
+        detail: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statusSince: new Date().toISOString(),
+      },
+    ]
+    await writeFile(join(tmpDir, 'sessions.json'), JSON.stringify(legacy), 'utf-8')
+    const loaded = await loadSessions(tmpDir, 7 * 24 * 60 * 60 * 1000)
+    expect(loaded.size).toBe(2)
+    expect(loaded.get('legacy-green')?.status).toBe('finished')
+    expect(loaded.get('legacy-orange')?.status).toBe('working')
   })
 
   it('overwrites stale file contents on save', async () => {

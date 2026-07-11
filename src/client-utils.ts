@@ -1,7 +1,9 @@
 // Pure, browser-environment-free utilities shared between src/client.ts and tests.
 // No DOM access, no window/document references — safe to import in Node test environments.
 
-export type SessionStatus = 'green' | 'yellow' | 'orange' | 'red'
+import type { SessionStatus } from './domain.js'
+
+export type { SessionStatus }
 
 export type Session = {
   readonly id: string

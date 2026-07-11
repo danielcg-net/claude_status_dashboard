@@ -1,4 +1,4 @@
-import type { Session, SessionStatus } from './domain.js'
+import type { Session } from './domain.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -6,10 +6,9 @@ import type { Session, SessionStatus } from './domain.js'
 
 /** Events are named after what's happening, not colors.
  *
- *    finished  — green  (Claude finished running)
- *    idle      — yellow (waiting for your input)
- *    working   — orange (actively thinking or using tools)
- *    attention — red    (needs your approval or attention)
+ *  SessionStatus values ('finished', 'idle', 'working', 'attention')
+ *  map directly to NotifyEvent values (plus 'started' for new sessions).
+ *  Colors are a derived visual concern — see domain.ts statusToColor.
  */
 export type NotifyEvent = 'started' | 'finished' | 'idle' | 'working' | 'attention'
 
@@ -91,20 +90,6 @@ export const __resetNotifyConfig = (): void => {
 /** Whether a given event type should fire a notification. */
 export const shouldNotify = (event: NotifyEvent): boolean =>
   config.enabled && config.events.has(event)
-
-/** Map a session status to its lifecycle event. */
-export const eventForStatus = (status: SessionStatus): NotifyEvent => {
-  switch (status) {
-    case 'green':
-      return 'finished'
-    case 'yellow':
-      return 'idle'
-    case 'orange':
-      return 'working'
-    case 'red':
-      return 'attention'
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Message text

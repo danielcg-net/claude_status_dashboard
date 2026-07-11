@@ -10,7 +10,7 @@ const mockFetch = vi.hoisted(() => vi.fn().mockResolvedValue(new Response()))
 const makeSession = (overrides?: Partial<Session>): Session => ({
   id: 'test-1',
   name: 'my-project',
-  status: 'orange',
+  status: 'working',
   detail: '',
   usageProject: '/home/user/my-project',
   createdAt: '2024-01-01T00:00:00.000Z',
@@ -42,32 +42,6 @@ beforeEach(() => {
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('NOTIFY_')) delete process.env[key]
   }
-})
-
-// ---------------------------------------------------------------------------
-// eventForStatus
-// ---------------------------------------------------------------------------
-
-describe('eventForStatus', () => {
-  it('maps green to "finished"', async () => {
-    const { eventForStatus } = await importNotify()
-    expect(eventForStatus('green')).toBe('finished')
-  })
-
-  it('maps yellow to "idle"', async () => {
-    const { eventForStatus } = await importNotify()
-    expect(eventForStatus('yellow')).toBe('idle')
-  })
-
-  it('maps orange to "working"', async () => {
-    const { eventForStatus } = await importNotify()
-    expect(eventForStatus('orange')).toBe('working')
-  })
-
-  it('maps red to "attention"', async () => {
-    const { eventForStatus } = await importNotify()
-    expect(eventForStatus('red')).toBe('attention')
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -114,7 +88,7 @@ describe('_buildPayload', () => {
     expect(parsed.timestamp).toBeDefined()
     expect(parsed.session.id).toBe('test-1')
     expect(parsed.session.name).toBe('my-project')
-    expect(parsed.session.status).toBe('orange')
+    expect(parsed.session.status).toBe('working')
     expect(parsed.session.detail).toBe('doing work')
     expect(parsed.session.usageProject).toBe('/home/user/my-project')
     expect(headers['Content-Type']).toBe('application/json')

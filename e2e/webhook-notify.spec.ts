@@ -37,12 +37,12 @@ test.describe('webhook notification resilience (API)', () => {
   test('session creation succeeds when webhook target is dead', async ({ request }) => {
     const session = await createSession(request, {
       name: 'e2e-webhook-new',
-      status: 'orange',
+      status: 'working',
       detail: 'starting up',
     })
 
     expect(session.name).toBe('e2e-webhook-new')
-    expect(session.status).toBe('orange')
+    expect(session.status).toBe('working')
 
     await request.delete(`/api/sessions/${session.id}`)
   })
@@ -51,15 +51,15 @@ test.describe('webhook notification resilience (API)', () => {
     const session = await createSession(request, {
       id: 'e2e-webhook-red',
       name: 'needs-attention',
-      status: 'yellow',
+      status: 'idle',
     })
 
     const res = await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'red', detail: 'approval required' },
+      data: { status: 'attention', detail: 'approval required' },
     })
     expect(res.status()).toBe(200)
     const body = await res.json()
-    expect(body.session.status).toBe('red')
+    expect(body.session.status).toBe('attention')
     expect(body.session.detail).toBe('approval required')
 
     await request.delete(`/api/sessions/${session.id}`)
@@ -69,15 +69,15 @@ test.describe('webhook notification resilience (API)', () => {
     const session = await createSession(request, {
       id: 'e2e-webhook-green',
       name: 'finished-job',
-      status: 'orange',
+      status: 'working',
     })
 
     const res = await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'green', detail: 'all done' },
+      data: { status: 'finished', detail: 'all done' },
     })
     expect(res.status()).toBe(200)
     const body = await res.json()
-    expect(body.session.status).toBe('green')
+    expect(body.session.status).toBe('finished')
 
     await request.delete(`/api/sessions/${session.id}`)
   })
@@ -87,22 +87,22 @@ test.describe('webhook notification resilience (API)', () => {
     // notification to the dead webhook URL and must still succeed.
     const session = await createSession(request, {
       name: 'e2e-webhook-lifecycle',
-      status: 'orange',
+      status: 'working',
     })
 
-    // Red transition (fires 'red' notification)
+    // Red transition (fires 'attention' notification)
     let res = await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'red', detail: 'waiting' },
+      data: { status: 'attention', detail: 'waiting' },
     })
     expect(res.status()).toBe(200)
-    expect((await res.json()).session.status).toBe('red')
+    expect((await res.json()).session.status).toBe('attention')
 
     // Green transition (fires 'finished' notification)
     res = await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'green', detail: 'completed' },
+      data: { status: 'finished', detail: 'completed' },
     })
     expect(res.status()).toBe(200)
-    expect((await res.json()).session.status).toBe('green')
+    expect((await res.json()).session.status).toBe('finished')
 
     // Deletion must still work
     res = await request.delete(`/api/sessions/${session.id}`)
@@ -125,7 +125,7 @@ test.describe('webhook notification resilience (UI)', () => {
   }) => {
     const session = await createSession(request, {
       name: 'e2e-webhook-ui',
-      status: 'orange',
+      status: 'working',
       detail: 'ui test',
     })
 
@@ -143,7 +143,7 @@ test.describe('webhook notification resilience (UI)', () => {
   }) => {
     const session = await createSession(request, {
       name: 'e2e-webhook-update-ui',
-      status: 'yellow',
+      status: 'idle',
       detail: 'before patch',
     })
 
@@ -151,9 +151,9 @@ test.describe('webhook notification resilience (UI)', () => {
     const card = page.locator('.session-card').filter({ hasText: 'e2e-webhook-update-ui' })
     await expect(card).toBeVisible()
 
-    // Patch to red — fires a 'red' notification that silently fails.
+    // Patch to red — fires a 'attention' notification that silently fails.
     await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'red', detail: 'after patch' },
+      data: { status: 'attention', detail: 'after patch' },
     })
 
     // Card should update on the next poll cycle (every 2 s).
@@ -168,14 +168,14 @@ test.describe('webhook notification resilience (UI)', () => {
 
     const session = await createSession(request, {
       name: 'e2e-webhook-noerrors',
-      status: 'orange',
+      status: 'working',
     })
 
     await page.goto('/')
 
-    // Trigger a 'red' notification (silently fails server-side).
+    // Trigger a 'attention' notification (silently fails server-side).
     await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'red' },
+      data: { status: 'attention' },
     })
 
     // Wait for a poll cycle so the UI refreshes.
