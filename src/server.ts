@@ -5,6 +5,12 @@ import { HTTPException } from 'hono/http-exception'
 import { logger } from 'hono/logger'
 import { fileURLToPath } from 'node:url'
 import {
+  beepSettingsSchema,
+  loadBeepSettings,
+  saveBeepSettings,
+  type BeepSettings,
+} from './beep-settings.js'
+import {
   deleteSession,
   registerSession,
   registerSessionSchema,
@@ -27,11 +33,13 @@ import { checkLatestVersion, compareVersions, getVersion } from './version.js'
 type AppState = {
   readonly sessions: SessionStore
   readonly notifySettings: NotifySettings
+  readonly beepSettings: BeepSettings
 }
 
 let state: AppState = {
   sessions: new Map(),
   notifySettings: notifySettingsSchema.parse({}),
+  beepSettings: beepSettingsSchema.parse({}),
 }
 
 const app = new Hono()
@@ -63,6 +71,13 @@ const enqueueSaveNotifySettings = (): void => {
   notifySaveQueue = notifySaveQueue
     .then(() => saveNotifySettings(dataDir, state.notifySettings))
     .catch((err) => console.error('Failed to persist notify settings:', err))
+}
+
+let beepSaveQueue: Promise<void> = Promise.resolve()
+const enqueueSaveBeepSettings = (): void => {
+  beepSaveQueue = beepSaveQueue
+    .then(() => saveBeepSettings(dataDir, state.beepSettings))
+    .catch((err) => console.error('Failed to persist beep settings:', err))
 }
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
@@ -210,6 +225,20 @@ app.put('/api/settings/notify', async (context) => {
   return context.json(maskNotifySettings(updated as NotifySettings))
 })
 
+// ---- Beep settings --------------------------------------------------
+
+app.get('/api/settings/beep', (context) =>
+  context.json(state.beepSettings),
+)
+
+app.put('/api/settings/beep', async (context) => {
+  const input = await parseJson(context.req.raw, beepSettingsSchema.partial())
+  const updated = { ...state.beepSettings, ...input }
+  state = { ...state, beepSettings: updated as BeepSettings }
+  enqueueSaveBeepSettings()
+  return context.json(updated as BeepSettings)
+})
+
 app.onError((error, context) => {
   if (error instanceof HTTPException) {
     return context.json({ error: error.message }, error.status)
@@ -234,11 +263,12 @@ export { app }
 import { __resetNotifyConfig } from './notify.js'
 
 export const __resetForTests = (): void => {
-  state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}) }
+  state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}), beepSettings: beepSettingsSchema.parse({}) }
   usageCache = null
   versionCache = null
   saveQueue = Promise.resolve()
   notifySaveQueue = Promise.resolve()
+  beepSaveQueue = Promise.resolve()
   __resetNotifyConfig()
 }
 
@@ -247,6 +277,7 @@ const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWi
 if (isMain || process.env.NODE_ENV !== 'test') {
   const sessions = await loadSessions(dataDir, sessionTtlMs)
   const persistedNotifySettings = await loadNotifySettings(dataDir)
+  const persistedBeepSettings = await loadBeepSettings(dataDir)
   if (persistedNotifySettings !== null) {
     setNotifyConfig(persistedNotifySettings)
     state = { ...state, sessions, notifySettings: persistedNotifySettings }
@@ -267,6 +298,9 @@ if (isMain || process.env.NODE_ENV !== 'test') {
         headers: { ...rt.headers },
       },
     }
+  }
+  if (persistedBeepSettings !== null) {
+    state = { ...state, beepSettings: persistedBeepSettings }
   }
 
   const evictTimer = setInterval(() => {

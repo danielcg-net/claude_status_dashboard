@@ -54,6 +54,13 @@ type NotifySettingsUI = {
   readonly headers: Readonly<Record<string, string>>
 }
 
+type BeepSettingsUI = {
+  readonly enabled: boolean
+  readonly alertAfterMs: number | null
+  readonly maxBeeps: number | null
+  readonly events: readonly string[]
+}
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
@@ -68,11 +75,9 @@ type AppState = ApiState & {
   readonly latestVersion: string | null
   readonly notifySettings: NotifySettingsUI | null
   readonly notifySettingsOpen: boolean
-}
-
-type AlertSettings = {
-  readonly redAlertAfterOverrideMs: number | null
-  readonly maxBeeps: number | null
+  readonly beepSettings: BeepSettingsUI | null
+  readonly beepSettingsOpen: boolean
+  readonly seenSessionIds: ReadonlySet<string>
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -116,53 +121,14 @@ const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
   }
 }
 
-const normalizeNonNegativeInteger = (value: unknown): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  const normalized = Math.floor(value)
-  return normalized >= 0 ? normalized : null
-}
-
-const normalizePositiveInteger = (value: unknown): number | null => {
-  const normalized = normalizeNonNegativeInteger(value)
-  return normalized !== null && normalized > 0 ? normalized : null
-}
-
-const loadAlertSettings = (): AlertSettings => {
-  try {
-    const raw = localStorage.getItem('alertSettings')
-    if (raw === null) {
-      return { redAlertAfterOverrideMs: null, maxBeeps: null }
-    }
-
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    return {
-      redAlertAfterOverrideMs: normalizeNonNegativeInteger(parsed.redAlertAfterOverrideMs),
-      maxBeeps: normalizePositiveInteger(parsed.maxBeeps),
-    }
-  } catch (error) {
-    console.warn('Could not load alert settings from localStorage:', error)
-    return { redAlertAfterOverrideMs: null, maxBeeps: null }
-  }
-}
-
-const saveAlertSettings = (settings: AlertSettings): void => {
-  try {
-    localStorage.setItem('alertSettings', JSON.stringify(settings))
-  } catch (error) {
-    console.warn('Could not save alert settings to localStorage:', error)
-  }
-}
-
-const initialAlertSettings = loadAlertSettings()
-
 const initialState: AppState = {
   sessions: [],
   redAlertAfterMs: 300_000,
   audioEnabled: false,
   lastBeepAt: 0,
   beepCount: 0,
-  redAlertAfterOverrideMs: initialAlertSettings.redAlertAfterOverrideMs,
-  maxBeeps: initialAlertSettings.maxBeeps,
+  redAlertAfterOverrideMs: null,
+  maxBeeps: null,
   usage: null,
   costWindow: 'today',
   selectedRepo: null,
@@ -171,6 +137,9 @@ const initialState: AppState = {
   latestVersion: null,
   notifySettings: null,
   notifySettingsOpen: false,
+  beepSettings: null,
+  beepSettingsOpen: false,
+  seenSessionIds: new Set<string>(),
 }
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
@@ -269,30 +238,50 @@ const tryFocus = (): void => {
 }
 
 const handleAlertState = (appState: AppState): AppState => {
-  const hasRed = redSessionsPastThreshold(appState).length > 0
+  const events = appState.beepSettings?.events ?? ['attention']
+  const thresholdMs = redAlertAfterMs(appState)
+  const now = Date.now()
 
-  if (!appState.audioEnabled || !hasRed) {
+  // Detect sessions whose status maps to a selected event
+  const matchingSessions = appState.sessions.filter((session) => {
+    const event = statusToEvent[session.status]
+    if (!events.includes(event)) return false
+    const ms = millisecondsSince(session.statusSince)
+    return ms !== null && ms >= thresholdMs
+  })
+
+  // Detect started events — sessions we haven't seen before
+  const newSessions = appState.sessions.filter(
+    (s) => events.includes('started') && !appState.seenSessionIds.has(s.id),
+  )
+
+  const hasTrigger = matchingSessions.length > 0 || newSessions.length > 0
+
+  // Update seen-session set — build fresh from current sessions to prune evicted ones
+  const nextSeenIds = new Set(appState.sessions.map((s) => s.id))
+
+  if (!appState.audioEnabled || !hasTrigger) {
     document.title = originalTitle
-    return appState.beepCount === 0 ? appState : { ...appState, beepCount: 0 }
+    const next = appState.beepCount === 0 ? appState : { ...appState, beepCount: 0 }
+    return next.seenSessionIds === nextSeenIds ? next : { ...next, seenSessionIds: nextSeenIds }
   }
 
   if (appState.maxBeeps !== null && appState.beepCount >= appState.maxBeeps) {
     document.title = 'WAITING!'
-    return appState
+    return { ...appState, seenSessionIds: nextSeenIds }
   }
 
-  const shouldAlert = Date.now() - appState.lastBeepAt > 3_000
+  const shouldAlert = now - appState.lastBeepAt > 3_000
 
   if (!shouldAlert) {
-    // Between alerts: keep title at WAITING to maintain visibility
     document.title = 'WAITING!'
-    return appState
+    return { ...appState, seenSessionIds: nextSeenIds }
   }
 
   flashTitle()
   tryFocus()
   beep()
-  return { ...appState, lastBeepAt: Date.now(), beepCount: appState.beepCount + 1 }
+  return { ...appState, lastBeepAt: now, beepCount: appState.beepCount + 1, seenSessionIds: nextSeenIds }
 }
 
 const apiFetch = async <T>(path: string, options?: RequestInit): Promise<T> => {
@@ -326,9 +315,27 @@ const saveNotifySettings = async (settings: Record<string, unknown>): Promise<No
     body: JSON.stringify(settings),
   })
 
+const loadBeepSettings = async (): Promise<BeepSettingsUI> =>
+  apiFetch<BeepSettingsUI>('/api/settings/beep')
+
+const saveBeepSettings = async (settings: Record<string, unknown>): Promise<BeepSettingsUI> =>
+  apiFetch<BeepSettingsUI>('/api/settings/beep', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+
 const notifyFormatOptions = ['generic', 'pushover', 'teams', 'slack', 'discord'] as const
 
 const notifyEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
+
+const beepEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
+
+const statusToEvent: Record<SessionStatus, string> = {
+  green: 'finished',
+  yellow: 'idle',
+  orange: 'working',
+  red: 'attention',
+}
 
 const booleanAttrs = new Set(['checked', 'disabled', 'selected', 'readonly', 'multiple', 'hidden'])
 
@@ -967,6 +974,7 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 
 let alertControlsRoot: HTMLElement | null = null
 let notifyPanelEl: HTMLElement | null = null
+let beepPanelEl: HTMLElement | null = null
 let alertControlsLive = false
 
 // Helper: sync an input's value only when it is NOT focused (user is not
@@ -1123,28 +1131,10 @@ const syncNotifyPanelFields = (panel: HTMLElement, s: NotifySettingsUI): void =>
 const syncAlertControlsInPlace = (): void => {
   if (!alertControlsRoot) return
 
-  // Audio toggle button text
-  const audioBtn = alertControlsRoot.querySelector<HTMLButtonElement>('#audio-toggle')
-  if (audioBtn) {
-    const label = state.audioEnabled ? 'Mute beeps' : 'Enable beeps'
-    if (audioBtn.textContent !== label) audioBtn.textContent = label
-  }
-
-  // Alert-after-seconds (skip if focused — user is editing)
-  syncTextLike(
-    alertControlsRoot.querySelector<HTMLInputElement>('#alert-after-seconds'),
-    String(redAlertAfterSeconds(state)),
-  )
-
-  // Limit beeps
-  syncCheckbox(alertControlsRoot.querySelector<HTMLInputElement>('#limit-beeps'), state.maxBeeps !== null)
-
-  // Max beeps
-  const maxBeepsInput = alertControlsRoot.querySelector<HTMLInputElement>('#max-beeps')
-  if (maxBeepsInput) {
-    const val = state.maxBeeps !== null ? String(state.maxBeeps) : ''
-    syncTextLike(maxBeepsInput, val)
-    syncDisabled(maxBeepsInput, state.maxBeeps === null)
+  // Beep toggle active class
+  const beepToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#beep-toggle')
+  if (beepToggle) {
+    beepToggle.classList.toggle('audio-toggle--active', state.beepSettingsOpen)
   }
 
   // Notify toggle active class
@@ -1153,22 +1143,38 @@ const syncAlertControlsInPlace = (): void => {
     notifyToggle.classList.toggle('audio-toggle--active', state.notifySettingsOpen)
   }
 
-  // ── Notify panel visibility transitions ──
-  const s = state.notifySettings
-  const shouldShow = state.notifySettingsOpen && s !== null
+  // ── Beep panel visibility transitions ──
+  {
+    const s = state.beepSettings
+    const shouldShow = state.beepSettingsOpen && s !== null
 
-  if (shouldShow && !notifyPanelEl) {
-    // Closed → open: build and insert
-    notifyPanelEl = buildNotifyPanel(s)
-    alertControlsRoot.append(notifyPanelEl)
-    attachNotifyPanelEvents()
-  } else if (shouldShow && notifyPanelEl) {
-    // Still open: sync fields in-place
-    syncNotifyPanelFields(notifyPanelEl, s)
-  } else if (!shouldShow && notifyPanelEl) {
-    // Open → closed: remove
-    notifyPanelEl.remove()
-    notifyPanelEl = null
+    if (shouldShow && !beepPanelEl) {
+      beepPanelEl = buildBeepPanel(s)
+      alertControlsRoot.append(beepPanelEl)
+      attachBeepPanelEvents()
+    } else if (shouldShow && beepPanelEl) {
+      syncBeepPanelFields(beepPanelEl, s)
+    } else if (!shouldShow && beepPanelEl) {
+      beepPanelEl.remove()
+      beepPanelEl = null
+    }
+  }
+
+  // ── Notify panel visibility transitions ──
+  {
+    const s = state.notifySettings
+    const shouldShow = state.notifySettingsOpen && s !== null
+
+    if (shouldShow && !notifyPanelEl) {
+      notifyPanelEl = buildNotifyPanel(s)
+      alertControlsRoot.append(notifyPanelEl)
+      attachNotifyPanelEvents()
+    } else if (shouldShow && notifyPanelEl) {
+      syncNotifyPanelFields(notifyPanelEl, s)
+    } else if (!shouldShow && notifyPanelEl) {
+      notifyPanelEl.remove()
+      notifyPanelEl = null
+    }
   }
 }
 
@@ -1176,41 +1182,11 @@ const syncAlertControlsInPlace = (): void => {
 
 const buildAlertControls = (): HTMLElement => {
   const children: HTMLElement[] = [
-    createElement('div', { class: 'alert-controls__row' }, [
-      createElement('label', { class: 'alert-controls__field' }, [
-        createElement('span', { class: 'alert-controls__label' }, ['Alert after']),
-        createElement('input', {
-          id: 'alert-after-seconds',
-          type: 'number',
-          min: '0',
-          step: '1',
-          inputmode: 'numeric',
-          value: String(redAlertAfterSeconds(state)),
-        }),
-        createElement('span', { class: 'alert-controls__unit' }, ['sec']),
-      ]),
-      createElement('label', { class: 'alert-controls__field' }, [
-        createElement('input', {
-          id: 'limit-beeps',
-          type: 'checkbox',
-          checked: state.maxBeeps !== null ? 'true' : undefined,
-        }),
-        createElement('span', { class: 'alert-controls__label' }, ['Limit to']),
-        createElement('input', {
-          id: 'max-beeps',
-          type: 'number',
-          min: '1',
-          step: '1',
-          inputmode: 'numeric',
-          value: state.maxBeeps !== null ? String(state.maxBeeps) : '',
-          disabled: state.maxBeeps === null ? 'true' : undefined,
-        }),
-        createElement('span', { class: 'alert-controls__unit' }, ['beeps']),
-      ]),
-    ]),
-    createElement('button', { id: 'audio-toggle', class: 'audio-toggle', type: 'button' }, [
-      state.audioEnabled ? 'Mute beeps' : 'Enable beeps',
-    ]),
+    createElement('button', {
+      id: 'beep-toggle',
+      class: `audio-toggle${state.beepSettingsOpen ? ' audio-toggle--active' : ''}`,
+      type: 'button',
+    }, ['Beeps']),
     createElement('button', {
       id: 'notify-toggle',
       class: `audio-toggle${state.notifySettingsOpen ? ' audio-toggle--active' : ''}`,
@@ -1227,52 +1203,9 @@ const attachAlertControlEvents = (): void => {
   if (alertControlsLive) return
   alertControlsLive = true
 
-  document.querySelector('#audio-toggle')?.addEventListener('click', () => {
-    state = { ...state, audioEnabled: !state.audioEnabled }
-    render()
-  })
-
-  document.querySelector<HTMLInputElement>('#alert-after-seconds')?.addEventListener('change', (event) => {
-    const input = event.currentTarget as HTMLInputElement
-    const seconds = Math.max(0, Math.floor(input.valueAsNumber))
-    const redAlertAfterOverrideMs = Number.isFinite(seconds) ? seconds * 1000 : null
-    state = { ...state, redAlertAfterOverrideMs, lastBeepAt: 0, beepCount: 0 }
-    saveAlertSettings({
-      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
-      maxBeeps: state.maxBeeps,
-    })
-    render()
-  })
-
-  document.querySelector<HTMLInputElement>('#limit-beeps')?.addEventListener('change', (event) => {
-    const checked = (event.currentTarget as HTMLInputElement).checked
-    state = {
-      ...state,
-      maxBeeps: checked ? (state.maxBeeps ?? 5) : null,
-      lastBeepAt: 0,
-      beepCount: 0,
-    }
-    saveAlertSettings({
-      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
-      maxBeeps: state.maxBeeps,
-    })
-    render()
-  })
-
-  document.querySelector<HTMLInputElement>('#max-beeps')?.addEventListener('change', (event) => {
-    const input = event.currentTarget as HTMLInputElement
-    const raw = input.valueAsNumber
-    const maxBeeps = Number.isNaN(raw) ? (state.maxBeeps ?? 5) : Math.max(1, Math.floor(raw))
-    state = {
-      ...state,
-      maxBeeps: Number.isFinite(maxBeeps) ? maxBeeps : (state.maxBeeps ?? 5),
-      lastBeepAt: 0,
-      beepCount: 0,
-    }
-    saveAlertSettings({
-      redAlertAfterOverrideMs: state.redAlertAfterOverrideMs,
-      maxBeeps: state.maxBeeps,
-    })
+  // Beep toggle: open/close settings panel
+  document.querySelector<HTMLButtonElement>('#beep-toggle')?.addEventListener('click', () => {
+    state = { ...state, beepSettingsOpen: !state.beepSettingsOpen }
     render()
   })
 
@@ -1323,6 +1256,206 @@ const attachNotifyPanelEvents = (): void => {
       state = { ...state, notifySettings: updated }
     } catch (err) {
       console.error('Failed to save notify settings:', err)
+    }
+    render()
+  })
+}
+
+// ── Beep settings floating panel ──────────────────────────────────────
+
+const buildBeepPanel = (s: BeepSettingsUI): HTMLElement =>
+  createElement('div', { class: 'alert-controls__beep-panel' }, [
+    // Header
+    createElement('div', { class: 'beep-panel__header' }, [
+      createElement('h3', {}, ['Beep Settings']),
+      createElement('button', {
+        class: 'beep-panel__close',
+        type: 'button',
+        'aria-label': 'Close beep settings',
+      }, ['✕']),
+    ]),
+    // Enable toggle
+    createElement('label', { class: 'beep-panel__toggle' }, [
+      createElement('input', {
+        id: 'beep-enabled',
+        type: 'checkbox',
+        checked: s.enabled ? 'true' : undefined,
+      }),
+      createElement('span', {}, ['Enable audio alerts']),
+    ]),
+    // Alert after + Max beeps row
+    createElement('div', { class: 'beep-panel__row' }, [
+      createElement('div', { class: 'beep-panel__field' }, [
+        createElement('label', { for: 'alert-after-seconds' }, ['Wait (seconds)']),
+        createElement('input', {
+          id: 'alert-after-seconds',
+          type: 'number',
+          min: '0',
+          step: '1',
+          inputmode: 'numeric',
+          value: String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(state) / 1000)),
+          disabled: s.enabled ? undefined : 'true',
+        }),
+      ]),
+      createElement('div', { class: 'beep-panel__field' }, [
+        createElement('label', { class: 'beep-panel__check-row' }, [
+          createElement('input', {
+            id: 'limit-beeps',
+            type: 'checkbox',
+            checked: s.maxBeeps !== null ? 'true' : undefined,
+            disabled: s.enabled ? undefined : 'true',
+          }),
+          createElement('span', {}, ['Limit to']),
+        ]),
+        createElement('input', {
+          id: 'max-beeps',
+          type: 'number',
+          step: '1',
+          inputmode: 'numeric',
+          value: s.maxBeeps !== null ? String(s.maxBeeps) : '',
+          placeholder: String(s.maxBeeps ?? 5),
+          disabled: s.maxBeeps === null || !s.enabled ? 'true' : undefined,
+        }),
+      ]),
+    ]),
+    // Events
+    createElement('fieldset', { class: 'beep-panel__events', disabled: s.enabled ? undefined : 'true' }, [
+      createElement('legend', {}, ['Events']),
+      createElement('div', { class: 'beep-panel__events-content' },
+        beepEventOptions.map(event =>
+          createElement('label', {}, [
+            createElement('input', {
+              type: 'checkbox',
+              value: event,
+              checked: s.events.includes(event) ? 'true' : undefined,
+              disabled: s.enabled ? undefined : 'true',
+            }),
+            event,
+          ]),
+        ),
+      ),
+    ]),
+    // Save
+    createElement('button', { id: 'beep-save', type: 'button' }, ['Save Settings']),
+  ])
+
+const syncBeepPanelFields = (panel: HTMLElement, s: BeepSettingsUI): void => {
+  const enabled = s.enabled
+  syncCheckbox(panel.querySelector<HTMLInputElement>('#beep-enabled'), enabled)
+  syncTextLike(
+    panel.querySelector<HTMLInputElement>('#alert-after-seconds'),
+    String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(state) / 1000)),
+  )
+  syncDisabled(panel.querySelector<HTMLInputElement>('#alert-after-seconds'), !enabled)
+  syncCheckbox(panel.querySelector<HTMLInputElement>('#limit-beeps'), s.maxBeeps !== null)
+  syncDisabled(panel.querySelector<HTMLInputElement>('#limit-beeps'), !enabled)
+  const maxBeepsInput = panel.querySelector<HTMLInputElement>('#max-beeps')
+  if (maxBeepsInput) {
+    const val = s.maxBeeps !== null ? String(s.maxBeeps) : ''
+    syncTextLike(maxBeepsInput, val)
+    syncDisabled(maxBeepsInput, s.maxBeeps === null || !enabled)
+    maxBeepsInput.placeholder = String(s.maxBeeps ?? 5)
+  }
+  // Event checkboxes
+  panel.querySelectorAll<HTMLInputElement>('.beep-panel__events input[type="checkbox"]').forEach(cb => {
+    syncCheckbox(cb, s.events.includes(cb.value))
+    syncDisabled(cb, !enabled)
+  })
+  const fieldset = panel.querySelector<HTMLFieldSetElement>('.beep-panel__events')
+  syncDisabled(fieldset, !enabled)
+  syncDisabled(panel.querySelector<HTMLButtonElement>('#beep-save'), !enabled)
+}
+
+const attachBeepPanelEvents = (): void => {
+  // Close button
+  document.querySelector('.beep-panel__close')?.addEventListener('click', () => {
+    state = { ...state, beepSettingsOpen: false }
+    render()
+  })
+
+  // Limit checkbox — toggle max-beeps input disabled state
+  document.querySelector<HTMLInputElement>('#limit-beeps')?.addEventListener('change', (event) => {
+    const checked = (event.currentTarget as HTMLInputElement).checked
+    const maxBeepsInput = document.querySelector<HTMLInputElement>('#max-beeps')
+    if (maxBeepsInput) {
+      syncDisabled(maxBeepsInput, !checked)
+      if (!checked) maxBeepsInput.value = ''
+    }
+  })
+
+  // Enable toggle (saves all panel values immediately)
+  document.querySelector<HTMLInputElement>('#beep-enabled')?.addEventListener('change', async (event) => {
+    const enabled = (event.currentTarget as HTMLInputElement).checked
+
+    const alertAfterInput = document.querySelector<HTMLInputElement>('#alert-after-seconds')
+    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(state) / 1000)
+    const alertAfterMs = Number.isFinite(seconds) ? seconds * 1000 : null
+
+    const limitChecked = document.querySelector<HTMLInputElement>('#limit-beeps')?.checked ?? false
+    const maxBeepsInput = document.querySelector<HTMLInputElement>('#max-beeps')
+    const maxBeeps: number | null = (() => {
+      if (!limitChecked) return null
+      if (!maxBeepsInput || !maxBeepsInput.value.trim()) return null
+      const raw = maxBeepsInput.valueAsNumber
+      if (Number.isNaN(raw)) return state.beepSettings?.maxBeeps ?? 5
+      return Math.max(1, Math.floor(raw))
+    })()
+
+    const events = [...document.querySelectorAll<HTMLInputElement>('.beep-panel__events input[type="checkbox"]:checked')]
+      .map(el => el.value)
+
+    try {
+      const updated = await saveBeepSettings({ enabled, alertAfterMs, maxBeeps, events })
+      state = {
+        ...state,
+        beepSettings: updated,
+        audioEnabled: enabled,
+        redAlertAfterOverrideMs: updated.alertAfterMs,
+        maxBeeps: updated.maxBeeps,
+      }
+    } catch { /* ignore */ }
+    render()
+  })
+
+  // Save button
+  document.querySelector<HTMLButtonElement>('#beep-save')?.addEventListener('click', async () => {
+    const alertAfterInput = document.querySelector<HTMLInputElement>('#alert-after-seconds')
+    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(state) / 1000)
+    const alertAfterMs = Number.isFinite(seconds) ? seconds * 1000 : null
+
+    const limitChecked = document.querySelector<HTMLInputElement>('#limit-beeps')?.checked ?? false
+    const maxBeepsInput = document.querySelector<HTMLInputElement>('#max-beeps')
+    const maxBeeps: number | null = (() => {
+      if (!limitChecked) return null
+      if (!maxBeepsInput || !maxBeepsInput.value.trim()) return null
+      const raw = maxBeepsInput.valueAsNumber
+      if (Number.isNaN(raw)) return state.beepSettings?.maxBeeps ?? 5
+      return Math.max(1, Math.floor(raw))
+    })()
+
+    const events = [...document.querySelectorAll<HTMLInputElement>('.beep-panel__events input[type="checkbox"]:checked')]
+      .map(el => el.value)
+
+    const body: Record<string, unknown> = {
+      enabled: document.querySelector<HTMLInputElement>('#beep-enabled')?.checked ?? state.beepSettings?.enabled ?? false,
+      alertAfterMs,
+      maxBeeps,
+      events,
+    }
+
+    try {
+      const updated = await saveBeepSettings(body)
+      state = {
+        ...state,
+        beepSettings: updated,
+        audioEnabled: updated.enabled,
+        redAlertAfterOverrideMs: updated.alertAfterMs,
+        maxBeeps: updated.maxBeeps,
+        lastBeepAt: 0,
+        beepCount: 0,
+      }
+    } catch (err) {
+      console.error('Failed to save beep settings:', err)
     }
     render()
   })
@@ -1567,6 +1700,13 @@ const render = (): void => {
       attachNotifyPanelEvents()
     }
 
+    // Show beep panel if already open at startup
+    if (state.beepSettingsOpen && state.beepSettings) {
+      beepPanelEl = buildBeepPanel(state.beepSettings)
+      alertControlsRoot.append(beepPanelEl)
+      attachBeepPanelEvents()
+    }
+
     firstRender = false
     return
   }
@@ -1616,10 +1756,20 @@ declare global {
   }
 }
 
-loadNotifySettings().then(settings => {
-  state = { ...state, notifySettings: settings }
-  render()
-}).catch(() => { render() })
+Promise.all([
+  loadNotifySettings().then(settings => {
+    state = { ...state, notifySettings: settings }
+  }),
+  loadBeepSettings().then(settings => {
+    state = {
+      ...state,
+      beepSettings: settings,
+      audioEnabled: false, // always start muted — browsers require user gesture for AudioContext
+      redAlertAfterOverrideMs: settings.alertAfterMs,
+      maxBeeps: settings.maxBeeps,
+    }
+  }),
+]).then(() => render()).catch(() => { render() })
 void refresh()
 void refreshUsage()
 void refreshVersion()
