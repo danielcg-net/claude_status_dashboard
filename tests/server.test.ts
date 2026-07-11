@@ -492,3 +492,84 @@ describe('notification integration', () => {
     expect(mockNotify).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /api/settings/notify', () => {
+  it('returns default settings with masked secrets', async () => {
+    const res = await app.request('/api/settings/notify')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.enabled).toBe(true)
+    expect(body.webhookUrl).toBe('')
+    expect(body.format).toBe('generic')
+    expect(body.events).toEqual(['started', 'finished', 'idle', 'working', 'attention'])
+    expect(body.pushoverToken).toBe('')
+    expect(body.pushoverUser).toBe('')
+    expect(body.headers).toEqual({})
+  })
+})
+
+describe('PUT /api/settings/notify', () => {
+  it('updates settings and returns masked response', async () => {
+    const res = await app.request('/api/settings/notify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhookUrl: 'https://hooks.example.com/push',
+        format: 'slack',
+        events: ['attention'],
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.webhookUrl).toBe('https://hooks.example.com/push')
+    expect(body.format).toBe('slack')
+    expect(body.events).toEqual(['attention'])
+  })
+
+  it('partial update preserves unset fields', async () => {
+    await app.request('/api/settings/notify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: 'https://hooks.example.com/hook' }),
+    })
+    const res = await app.request('/api/settings/notify')
+    const body = await res.json()
+    expect(body.webhookUrl).toBe('https://hooks.example.com/hook')
+    expect(body.format).toBe('generic')
+  })
+
+  it('validates input', async () => {
+    const res = await app.request('/api/settings/notify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'invalid-format' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('masks secrets when set', async () => {
+    await app.request('/api/settings/notify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushoverToken: 'abc123def456ghi',
+        pushoverUser: 'user789xyz',
+      }),
+    })
+    const res = await app.request('/api/settings/notify')
+    const body = await res.json()
+    expect(body.pushoverToken).toBe('abc1...ghi')
+    expect(body.pushoverUser).toBe('user...xyz')
+  })
+
+  it('masks short secrets as ****', async () => {
+    await app.request('/api/settings/notify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pushoverToken: 'abc' }),
+    })
+    const res = await app.request('/api/settings/notify')
+    const body = await res.json()
+    expect(body.pushoverToken).toBe('****')
+  })
+})

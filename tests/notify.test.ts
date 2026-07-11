@@ -275,3 +275,59 @@ describe('notify', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// setNotifyConfig / getNotifyConfig — mutable runtime config
+// ---------------------------------------------------------------------------
+
+describe('setNotifyConfig / getNotifyConfig', () => {
+  it('updates config and shouldNotify reflects the change', async () => {
+    const { setNotifyConfig, shouldNotify, __resetNotifyConfig } = await importNotify({})
+    __resetNotifyConfig()
+    expect(shouldNotify('attention')).toBe(true)
+    setNotifyConfig({ enabled: false })
+    expect(shouldNotify('attention')).toBe(false)
+  })
+
+  it('partial update preserves other fields', async () => {
+    const { setNotifyConfig, getNotifyConfig, __resetNotifyConfig } = await importNotify({})
+    __resetNotifyConfig()
+    setNotifyConfig({ webhookUrl: 'https://example.com/hook' })
+    const cfg = getNotifyConfig()
+    expect(cfg.webhookUrl).toBe('https://example.com/hook')
+    expect(cfg.format).toBe('generic')
+  })
+
+  it('pushover payload builders read from updated config', async () => {
+    const { setNotifyConfig, _buildPayload, __resetNotifyConfig } = await importNotify({})
+    __resetNotifyConfig()
+    setNotifyConfig({
+      pushoverToken: 'runtime-token',
+      pushoverUser: 'runtime-user',
+    })
+    const { body } = _buildPayload('pushover', 'attention', makeSession())
+    const parsed = JSON.parse(body)
+    expect(parsed.token).toBe('runtime-token')
+    expect(parsed.user).toBe('runtime-user')
+  })
+})
+
+describe('notify with enabled flag', () => {
+  it('is a no-op when enabled is false', async () => {
+    const { setNotifyConfig, notify, __resetNotifyConfig } = await importNotify({
+      NOTIFY_WEBHOOK_URL: 'https://example.com/hook',
+    })
+    __resetNotifyConfig()
+    setNotifyConfig({ enabled: false })
+    notify('attention', makeSession())
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('fires when enabled is true and webhook URL is set', async () => {
+    const { setNotifyConfig, notify, __resetNotifyConfig } = await importNotify({})
+    __resetNotifyConfig()
+    setNotifyConfig({ enabled: true, webhookUrl: 'https://example.com/hook' })
+    notify('attention', makeSession())
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+})

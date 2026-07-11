@@ -13,17 +13,25 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
-import { eventForStatus, notify } from './notify.js'
+import { eventForStatus, getNotifyConfig, notify, setNotifyConfig } from './notify.js'
+import {
+  loadNotifySettings,
+  notifySettingsSchema,
+  saveNotifySettings,
+  type NotifySettings,
+} from './notify-settings.js'
 import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
 import { checkLatestVersion, compareVersions, getVersion } from './version.js'
 
 type AppState = {
   readonly sessions: SessionStore
+  readonly notifySettings: NotifySettings
 }
 
 let state: AppState = {
   sessions: new Map(),
+  notifySettings: notifySettingsSchema.parse({}),
 }
 
 const app = new Hono()
@@ -48,6 +56,13 @@ const enqueueSave = (): void => {
   saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch((err) => {
     console.error('Failed to persist sessions:', err)
   })
+}
+
+let notifySaveQueue: Promise<void> = Promise.resolve()
+const enqueueSaveNotifySettings = (): void => {
+  notifySaveQueue = notifySaveQueue
+    .then(() => saveNotifySettings(dataDir, state.notifySettings))
+    .catch((err) => console.error('Failed to persist notify settings:', err))
 }
 
 const parseJson = async <T>(request: Request, schema: { parse: (value: unknown) => T }): Promise<T> => {
@@ -115,7 +130,7 @@ app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
   const previous = input.id ? state.sessions.get(input.id) : undefined
   const [sessions, session] = registerSession(state.sessions, input)
-  state = { sessions }
+  state = { ...state, sessions }
   enqueueSave()
 
   // Fire notifications on session lifecycle events (fire-and-forget).
@@ -134,7 +149,7 @@ app.patch('/api/sessions/:id', async (context) => {
   const id = context.req.param('id')
   const previous = state.sessions.get(id)
   const [sessions, session] = updateSession(state.sessions, id, input)
-  state = { sessions }
+  state = { ...state, sessions }
 
   if (!session) {
     throw new HTTPException(404, { message: 'Session not found.' })
@@ -152,7 +167,7 @@ app.patch('/api/sessions/:id', async (context) => {
 
 app.delete('/api/sessions/:id', (context) => {
   const [sessions, deleted] = deleteSession(state.sessions, context.req.param('id'))
-  state = { sessions }
+  state = { ...state, sessions }
 
   if (!deleted) {
     throw new HTTPException(404, { message: 'Session not found.' })
@@ -160,6 +175,39 @@ app.delete('/api/sessions/:id', (context) => {
 
   enqueueSave()
   return context.json({ deleted: true })
+})
+
+// ---- Notify settings ------------------------------------------------
+
+const maskSecret = (value: string): string => {
+  if (!value) return ''
+  if (value.length <= 7) return '****'
+  return `${value.slice(0, 4)}...${value.slice(-3)}`
+}
+
+const maskNotifySettings = (s: NotifySettings) => ({
+  enabled: s.enabled,
+  webhookUrl: s.webhookUrl,
+  format: s.format,
+  events: s.events,
+  pushoverToken: maskSecret(s.pushoverToken),
+  pushoverUser: maskSecret(s.pushoverUser),
+  headers: s.headers,
+})
+
+app.get('/api/settings/notify', (context) =>
+  context.json(maskNotifySettings(state.notifySettings)),
+)
+
+app.put('/api/settings/notify', async (context) => {
+  const input = await parseJson(context.req.raw, notifySettingsSchema.partial())
+  const updated = { ...state.notifySettings, ...input }
+  state = { ...state, notifySettings: updated as NotifySettings }
+  const override: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(input)) { if (v !== undefined) (override as Record<string, unknown>)[k] = v }
+  setNotifyConfig(override as Parameters<typeof setNotifyConfig>[0])
+  enqueueSaveNotifySettings()
+  return context.json(maskNotifySettings(updated as NotifySettings))
 })
 
 app.onError((error, context) => {
@@ -182,23 +230,34 @@ app.get('*', serveStatic({ path: `${staticRoot}/index.html` }))
 export { app }
 
 // Exported for test isolation — resets sessions, usage cache, and save queue.
+// Import for test isolation only.
+import { __resetNotifyConfig } from './notify.js'
+
 export const __resetForTests = (): void => {
-  state = { sessions: new Map() }
+  state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}) }
   usageCache = null
   versionCache = null
   saveQueue = Promise.resolve()
+  notifySaveQueue = Promise.resolve()
+  __resetNotifyConfig()
 }
 
 const isMain = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts')
 
 if (isMain || process.env.NODE_ENV !== 'test') {
   const sessions = await loadSessions(dataDir, sessionTtlMs)
-  state = { sessions }
+  const persistedNotifySettings = await loadNotifySettings(dataDir)
+  if (persistedNotifySettings !== null) {
+    setNotifyConfig(persistedNotifySettings)
+    state = { ...state, sessions, notifySettings: persistedNotifySettings }
+  } else {
+    state = { ...state, sessions }
+  }
 
   const evictTimer = setInterval(() => {
     const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
     if (evicted.size !== state.sessions.size) {
-      state = { sessions: evicted }
+      state = { ...state, sessions: evicted }
       enqueueSave()
     }
   }, evictIntervalMs)
@@ -220,7 +279,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     // then flush pending saves before exiting.
     const serverClosed = new Promise<void>((resolve) => server.on('close', resolve))
     server.close()
-    Promise.all([serverClosed, saveQueue.catch(() => {})]).finally(() => process.exit(0))
+    Promise.all([serverClosed, saveQueue.catch(() => {}), notifySaveQueue.catch(() => {})]).finally(() => process.exit(0))
   }
   process.once('SIGTERM', shutdown)
   process.once('SIGINT', shutdown)

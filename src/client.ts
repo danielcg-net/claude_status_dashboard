@@ -44,6 +44,16 @@ type VersionInfo = {
   readonly updateAvailable: boolean
 }
 
+type NotifySettingsUI = {
+  readonly enabled: boolean
+  readonly webhookUrl: string
+  readonly format: string
+  readonly events: readonly string[]
+  readonly pushoverToken: string
+  readonly pushoverUser: string
+  readonly headers: Readonly<Record<string, string>>
+}
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
@@ -56,6 +66,8 @@ type AppState = ApiState & {
   readonly excludedRepos: ReadonlySet<string>
   readonly updateAvailable: boolean
   readonly latestVersion: string | null
+  readonly notifySettings: NotifySettingsUI | null
+  readonly notifySettingsOpen: boolean
 }
 
 type AlertSettings = {
@@ -157,6 +169,8 @@ const initialState: AppState = {
   excludedRepos: loadExcludedRepos(),
   updateAvailable: false,
   latestVersion: null,
+  notifySettings: null,
+  notifySettingsOpen: false,
 }
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
@@ -302,6 +316,19 @@ const loadState = async (): Promise<ApiState> => apiFetch<ApiState>('/api/sessio
 const loadUsage = async (): Promise<UsageSummary> => apiFetch<UsageSummary>('/api/usage')
 
 const loadVersion = async (): Promise<VersionInfo> => apiFetch<VersionInfo>('/api/version')
+
+const loadNotifySettings = async (): Promise<NotifySettingsUI> =>
+  apiFetch<NotifySettingsUI>('/api/settings/notify')
+
+const saveNotifySettings = async (settings: Record<string, unknown>): Promise<NotifySettingsUI> =>
+  apiFetch<NotifySettingsUI>('/api/settings/notify', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+
+const notifyFormatOptions = ['generic', 'pushover', 'teams', 'slack', 'discord'] as const
+
+const notifyEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
 
 const booleanAttrs = new Set(['checked', 'disabled', 'selected', 'readonly', 'multiple', 'hidden'])
 
@@ -971,6 +998,120 @@ const renderAlertControls = (): HTMLElement =>
     ]),
   ])
 
+const parseHeadersTextarea = (raw: string): Record<string, string> => {
+  if (!raw.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>
+    }
+  } catch { /* fallthrough */ }
+  return {}
+}
+
+const renderNotifySettings = (): HTMLElement => {
+  const s = state.notifySettings
+  const configured = s !== null && s.webhookUrl.length > 0
+  const summaryLabel = s === null
+    ? 'Webhook notifications...'
+    : s.enabled
+      ? `Webhook notifications${configured ? '' : ' (not configured)'}`
+      : 'Webhook notifications (disabled)'
+
+  return createElement('details', {
+    class: 'notify-settings',
+    open: state.notifySettingsOpen ? 'true' : undefined,
+  }, [
+    createElement('summary', { class: 'notify-settings__summary' }, [summaryLabel]),
+
+    s === null
+      ? createElement('p', { class: 'notify-settings__loading' }, ['Loading...'])
+      : createElement('div', { class: 'notify-settings__panel', style: s.enabled ? undefined : 'opacity:0.4' }, [
+          createElement('label', { class: 'notify-settings__toggle' }, [
+            createElement('span', {}, ['Enable webhook notifications']),
+            createElement('input', {
+              id: 'notify-enabled',
+              type: 'checkbox',
+              checked: s.enabled ? 'true' : undefined,
+            }),
+          ]),
+          createElement('label', { class: 'notify-settings__field' }, [
+            createElement('span', { class: 'notify-settings__label' }, ['Webhook URL']),
+            createElement('input', {
+              id: 'notify-webhook-url',
+              type: 'url',
+              value: s.webhookUrl,
+              placeholder: 'https://hooks.example.com/...',
+              disabled: s.enabled ? undefined : 'true',
+            }),
+          ]),
+          createElement('label', { class: 'notify-settings__field' }, [
+            createElement('span', { class: 'notify-settings__label' }, ['Payload format']),
+            createElement('select', {
+              id: 'notify-format',
+              disabled: s.enabled ? undefined : 'true',
+            }, notifyFormatOptions.map(f =>
+              createElement('option', {
+                value: f,
+                selected: s.format === f ? 'true' : undefined,
+              }, [f]),
+            )),
+          ]),
+          createElement('fieldset', {
+            class: 'notify-settings__events',
+            disabled: s.enabled ? undefined : 'true',
+          }, [
+            createElement('legend', {}, ['Notify on']),
+            ...notifyEventOptions.map(event =>
+              createElement('label', {}, [
+                createElement('input', {
+                  type: 'checkbox',
+                  value: event,
+                  checked: s.events.includes(event) ? 'true' : undefined,
+                  disabled: s.enabled ? undefined : 'true',
+                }),
+                ` ${event}`,
+              ]),
+            ),
+          ]),
+          createElement('label', { class: 'notify-settings__field' }, [
+            createElement('span', { class: 'notify-settings__label' }, ['Pushover token']),
+            createElement('input', {
+              id: 'notify-pushover-token',
+              type: 'password',
+              placeholder: s.pushoverToken || '(not set)',
+              disabled: s.enabled ? undefined : 'true',
+            }),
+          ]),
+          createElement('label', { class: 'notify-settings__field' }, [
+            createElement('span', { class: 'notify-settings__label' }, ['Pushover user']),
+            createElement('input', {
+              id: 'notify-pushover-user',
+              type: 'password',
+              placeholder: s.pushoverUser || '(not set)',
+              disabled: s.enabled ? undefined : 'true',
+            }),
+          ]),
+          createElement('label', { class: 'notify-settings__field' }, [
+            createElement('span', { class: 'notify-settings__label' }, ['Custom headers (JSON)']),
+            createElement('textarea', {
+              id: 'notify-headers',
+              rows: '3',
+              disabled: s.enabled ? undefined : 'true',
+            }, [JSON.stringify(s.headers, null, 2)]),
+          ]),
+          createElement('div', { class: 'notify-settings__actions' }, [
+            createElement('button', {
+              id: 'notify-save',
+              class: 'notify-settings__save',
+              type: 'button',
+              disabled: s.enabled ? undefined : 'true',
+            }, ['Save settings']),
+          ]),
+        ]),
+  ])
+}
+
 const versionBannerDismissedKey = 'version-banner-dismissed'
 
 const renderUpdateBanner = (appState: AppState): HTMLElement | null => {
@@ -1017,6 +1158,7 @@ const render = (): void => {
         ]),
         renderAlertControls(),
       ]),
+      renderNotifySettings(),
       renderUsage(state.usage),
       state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
         createElement('h2', {}, ['Costs by repo']),
@@ -1189,6 +1331,44 @@ const render = (): void => {
     }
     state = { ...state, updateAvailable: false }
     render()
+  })
+
+  // Notify settings: enable/disable toggle (saves immediately)
+  document.querySelector<HTMLInputElement>('#notify-enabled')?.addEventListener('change', async (event) => {
+    const checked = (event.currentTarget as HTMLInputElement).checked
+    try {
+      const updated = await saveNotifySettings({ enabled: checked })
+      state = { ...state, notifySettings: updated }
+    } catch { /* ignore — re-render will show stale state */ }
+    render()
+  })
+
+  // Notify settings: save button
+  document.querySelector<HTMLButtonElement>('#notify-save')?.addEventListener('click', async () => {
+    const body: Record<string, unknown> = {
+      webhookUrl: document.querySelector<HTMLInputElement>('#notify-webhook-url')?.value ?? '',
+      format: (document.querySelector<HTMLSelectElement>('#notify-format')?.value) ?? 'generic',
+      events: [...document.querySelectorAll<HTMLInputElement>('.notify-settings__events input[type="checkbox"]:checked')]
+        .map(el => el.value),
+      headers: parseHeadersTextarea(document.querySelector<HTMLTextAreaElement>('#notify-headers')?.value ?? ''),
+    }
+    const tokenInput = document.querySelector<HTMLInputElement>('#notify-pushover-token')
+    if (tokenInput?.value) body.pushoverToken = tokenInput.value
+    const userInput = document.querySelector<HTMLInputElement>('#notify-pushover-user')
+    if (userInput?.value) body.pushoverUser = userInput.value
+
+    try {
+      const updated = await saveNotifySettings(body)
+      state = { ...state, notifySettings: updated }
+    } catch (err) {
+      console.error('Failed to save notify settings:', err)
+    }
+    render()
+  })
+
+  // Notify settings: track details open/closed state
+  document.querySelector<HTMLDetailsElement>('.notify-settings')?.addEventListener('toggle', (event) => {
+    state = { ...state, notifySettingsOpen: (event.currentTarget as HTMLDetailsElement).open }
   })
 }
 
