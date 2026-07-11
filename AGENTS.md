@@ -4,8 +4,10 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 
 ## Git workflow
 
-- Do not code directly in `main`. Always create a feature branch from an up-to-date `main`.
-- Always open pull requests for feature branches — never commit or push to `main`.
+- **Never push directly to `main`.** All changes go through feature branches → PR → review → merge. Even trivial fixes, even docs. No exceptions.
+- **Never reuse branch names.** Once a branch is merged and deleted, that name is dead. GitHub Actions silently skips workflow triggers for reused branch names. Always create a fresh, unique name (e.g. `feat/webhook-notify`, `fix/event-names`, `docs/pushover-setup`).
+- **Branch naming:** use the conventional commit prefix as a slug — `feat/<thing>`, `fix/<thing>`, `docs/<thing>`, `chore/<thing>`.
+- Always branch off an up-to-date `main`.
 - For git operations: use local terminal commands (stage, commit, push). Only use GitHub MCP/API for remote-only operations (creating PRs, fetching comments).
 - Always verify commits are clean before pushing — keep each PR focused.
 
