@@ -62,8 +62,8 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2rem, 6vw, 4.8rem);
-  line-height: 0.95;
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  line-height: 1.1;
   letter-spacing: 0;
 }
 
@@ -1122,167 +1122,68 @@ h1 {
   }
 }
 
-/* ── Notification settings panel ──────────────────────── */
+/* ── Notifications toggle active state ──────────── */
 
-.notify-settings {
+.audio-toggle--active {
+  border-color: var(--blue);
+  color: var(--text);
+}
+
+/* ── Notification settings inline panel ─────────── */
+
+.alert-controls__notify-panel {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  margin-bottom: 18px;
 }
 
-.notify-settings summary {
-  list-style: none;
-}
-
-.notify-settings summary::-webkit-details-marker {
-  display: none;
-}
-
-.notify-settings__summary {
-  padding: 12px 18px;
-  cursor: pointer;
-  user-select: none;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.notify-settings__summary:hover {
-  color: var(--text);
-}
-
-.notify-settings__loading {
-  padding: 0 18px 18px;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.notify-settings__panel {
-  padding: 0 18px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.notify-settings__toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.notify-settings__toggle input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--blue);
-  cursor: pointer;
-}
-
-.notify-settings__field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.notify-settings__label {
-  font-weight: 600;
-}
-
-.notify-settings__field input,
-.notify-settings__field select,
-.notify-settings__field textarea {
-  width: 100%;
-  min-height: 34px;
+.alert-controls__events {
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--panel-strong);
-  color: var(--text);
-  padding: 4px 8px;
-  font: inherit;
-}
-
-.notify-settings__field input:focus,
-.notify-settings__field select:focus,
-.notify-settings__field textarea:focus {
-  border-color: var(--blue);
-  outline: none;
-}
-
-.notify-settings__field textarea {
-  min-height: 60px;
-  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-  font-size: 0.82rem;
-  resize: vertical;
-}
-
-.notify-settings__field input:disabled,
-.notify-settings__field select:disabled,
-.notify-settings__field textarea:disabled,
-.notify-settings__events[disabled] {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.notify-settings__events {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 12px 14px;
+  padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: 4px 12px;
 }
 
-.notify-settings__events legend {
+.alert-controls__events legend {
   color: var(--muted);
-  font-size: 0.82rem;
-  padding: 0 6px;
+  font-size: 0.78rem;
+  padding: 0 4px;
 }
 
-.notify-settings__events label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 0.84rem;
-  cursor: pointer;
-}
-
-.notify-settings__events input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+.alert-controls__events input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
   accent-color: var(--blue);
-  cursor: pointer;
 }
 
-.notify-settings__actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.notify-settings__save {
-  align-self: flex-start;
-  min-height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel-strong);
-  color: var(--text);
-  padding: 0 20px;
-  font-size: 0.88rem;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-.notify-settings__save:hover {
-  border-color: var(--blue);
-}
-
-.notify-settings__save:disabled {
+.alert-controls__notify-panel input:disabled,
+.alert-controls__notify-panel select:disabled,
+.alert-controls__notify-panel textarea:disabled,
+.alert-controls__events[disabled] {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.alert-controls__notify-panel input[type="url"],
+.alert-controls__notify-panel select {
+  min-width: 180px;
+}
+
+.alert-controls__notify-panel input[type="password"] {
+  min-width: 140px;
+}
+
+.alert-controls__notify-panel textarea {
+  min-width: 200px;
+  min-height: 44px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  resize: vertical;
 }
