@@ -251,7 +251,22 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     setNotifyConfig(persistedNotifySettings)
     state = { ...state, sessions, notifySettings: persistedNotifySettings }
   } else {
-    state = { ...state, sessions }
+    // No persisted settings — seed state from runtime (env vars) so the GUI
+    // shows the effective configuration instead of empty defaults.
+    const rt = getNotifyConfig()
+    state = {
+      ...state,
+      sessions,
+      notifySettings: {
+        enabled: rt.enabled,
+        webhookUrl: rt.webhookUrl,
+        format: rt.format,
+        events: [...rt.events] as NotifySettings['events'],
+        pushoverToken: rt.pushoverToken,
+        pushoverUser: rt.pushoverUser,
+        headers: { ...rt.headers },
+      },
+    }
   }
 
   const evictTimer = setInterval(() => {
