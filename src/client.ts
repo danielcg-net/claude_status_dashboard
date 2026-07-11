@@ -71,6 +71,7 @@ type AppState = ApiState & {
   readonly costWindow: CostWindow
   readonly selectedRepo: string | null
   readonly excludedRepos: ReadonlySet<string>
+  readonly excludedStates: ReadonlySet<SessionStatus>
   readonly updateAvailable: boolean
   readonly latestVersion: string | null
   readonly notifySettings: NotifySettingsUI | null
@@ -121,6 +122,31 @@ const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
   }
 }
 
+const loadExcludedStates = (): ReadonlySet<SessionStatus> => {
+  try {
+    const raw = localStorage.getItem('excludedStates')
+    if (raw === null) return new Set<SessionStatus>()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set<SessionStatus>()
+    return new Set<SessionStatus>(
+      parsed.filter((item): item is SessionStatus =>
+        typeof item === 'string' && ['green', 'yellow', 'orange', 'red'].includes(item),
+      ),
+    )
+  } catch (error) {
+    console.warn('Could not load excluded states from localStorage:', error)
+    return new Set<SessionStatus>()
+  }
+}
+
+const saveExcludedStates = (excluded: ReadonlySet<SessionStatus>): void => {
+  try {
+    localStorage.setItem('excludedStates', JSON.stringify([...excluded]))
+  } catch (error) {
+    console.warn('Could not save excluded states to localStorage:', error)
+  }
+}
+
 const initialState: AppState = {
   sessions: [],
   redAlertAfterMs: 300_000,
@@ -133,6 +159,7 @@ const initialState: AppState = {
   costWindow: 'today',
   selectedRepo: null,
   excludedRepos: loadExcludedRepos(),
+  excludedStates: loadExcludedStates(),
   updateAvailable: false,
   latestVersion: null,
   notifySettings: null,
@@ -502,6 +529,9 @@ const isSessionExcluded = (session: Session): boolean => {
   if (session.usageProject && state.excludedRepos.has(session.usageProject)) return true
   return false
 }
+
+const isSessionStateExcluded = (session: Session): boolean =>
+  state.excludedStates.size > 0 && state.excludedStates.has(session.status)
 
 const findUsageProject = (session: Session, usage: UsageSummary | null): UsageProject | null => {
   if (!usage?.available) {
@@ -913,6 +943,32 @@ const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => 
             'data-unexclude-repo': key,
             'aria-label': `Include ${display} again`,
             title: `Include ${display} again`,
+          }, ['✕']),
+        ]),
+      ),
+    ]),
+  ])
+}
+
+const renderExcludedStatesSection = (): HTMLElement | null => {
+  if (state.excludedStates.size === 0) return null
+
+  const sortedStates = (['green', 'yellow', 'orange', 'red'] as const)
+    .filter((s) => state.excludedStates.has(s))
+
+  return createElement('details', { class: 'excluded-details excluded-details--states' }, [
+    createElement('summary', { class: 'excluded-details__summary' }, [
+      `Excluded states (${sortedStates.length}) — click to manage`,
+    ]),
+    createElement('div', { class: 'excluded-details__tags' }, [
+      ...sortedStates.map((status) =>
+        createElement('span', { class: 'excluded-details__tag' }, [
+          createElement('span', {}, [statusLabels[status]]),
+          createElement('button', {
+            type: 'button',
+            'data-unexclude-state': status,
+            'aria-label': `Show ${statusLabels[status]} sessions again`,
+            title: `Show ${statusLabels[status]} sessions again`,
           }, ['✕']),
         ]),
       ),
@@ -1549,20 +1605,33 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
   ]),
   createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
     ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
-      createElement('div', { class: `summary__item summary__item--${status}` }, [
-        createElement('span', {}, [statusLabels[status]]),
+      createElement('div', { class: `summary__item summary__item--${status}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
+        createElement('span', {}, [statusLabels[status], state.excludedStates.has(status) ? ' (hidden)' : '']),
         createElement('strong', {}, [String(state.sessions.filter((session) => {
           if (session.status !== status) return false
           if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+          if (isSessionStateExcluded(session)) return false
           if (state.selectedRepo) {
             const project = findUsageProject(session, state.usage)
             return project?.project === state.selectedRepo
           }
           return true
         }).length)]),
+        createElement('button', {
+          class: 'summary__item__exclude',
+          type: 'button',
+          'data-exclude-state': status,
+          'aria-label': state.excludedStates.has(status)
+            ? `Show ${statusLabels[status]} sessions again`
+            : `Hide ${statusLabels[status]} sessions`,
+          title: state.excludedStates.has(status)
+            ? `Show ${statusLabels[status]} sessions again`
+            : `Hide ${statusLabels[status]} sessions from the grid`,
+        }, ['✕']),
       ]),
     ),
   ]),
+  ...(() => { const s = renderExcludedStatesSection(); return s ? [s] : [] })(),
   state.sessions.length === 0
     ? createElement('section', { class: 'empty' }, [
         createElement('h2', {}, ['No sessions registered']),
@@ -1594,6 +1663,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
     : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
         .filter((session) => {
           if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+          if (isSessionStateExcluded(session)) return false
           if (state.selectedRepo) {
             const project = findUsageProject(session, state.usage)
             return project?.project === state.selectedRepo
@@ -1651,6 +1721,35 @@ const attachBodyEvents = (): void => {
       next.delete(fullKey)
       saveExcludedRepos(next)
       state = { ...state, excludedRepos: next }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-exclude-state]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const status = button.dataset.excludeState as SessionStatus | undefined
+      if (!status || !['green', 'yellow', 'orange', 'red'].includes(status)) return
+      const next = new Set(state.excludedStates)
+      if (next.has(status)) {
+        next.delete(status)
+      } else {
+        next.add(status)
+      }
+      saveExcludedStates(next)
+      state = { ...state, excludedStates: next }
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-unexclude-state]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const status = button.dataset.unexcludeState as SessionStatus | undefined
+      if (!status || !state.excludedStates.has(status)) return
+      const next = new Set(state.excludedStates)
+      next.delete(status)
+      saveExcludedStates(next)
+      state = { ...state, excludedStates: next }
       render()
     })
   })
@@ -1714,7 +1813,21 @@ const render = (): void => {
   // ── Subsequent renders: sync persistent sections, rebuild body ──
   syncBanner()
   syncAlertControlsInPlace()
+
+  // Capture open state of <details> elements before rebuild
+  const prevOpenRepos = bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.hasAttribute('open') ?? false
+  const prevOpenStates = bodyWrapper!.querySelector('details.excluded-details--states')?.hasAttribute('open') ?? false
+
   bodyWrapper!.replaceChildren(...buildBodyContent())
+
+  // Restore open state after rebuild
+  if (prevOpenRepos) {
+    bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.setAttribute('open', '')
+  }
+  if (prevOpenStates) {
+    bodyWrapper!.querySelector('details.excluded-details--states')?.setAttribute('open', '')
+  }
+
   attachBodyEvents()
 }
 
