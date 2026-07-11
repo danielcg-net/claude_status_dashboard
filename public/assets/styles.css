@@ -1139,14 +1139,15 @@ h1 {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 400px;
+  width: 460px;
   max-width: calc(100vw - 32px);
-  max-height: 80vh;
+  max-height: 85vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px;
+  gap: 12px;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
@@ -1231,7 +1232,7 @@ h1 {
 .notify-panel__field input,
 .notify-panel__field select,
 .notify-panel__field textarea {
-  min-height: 36px;
+  min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-strong);
@@ -1248,7 +1249,7 @@ h1 {
 
 .notify-panel__field textarea {
   padding: 8px 10px;
-  min-height: 52px;
+  min-height: 50px;
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   font-size: 0.78rem;
   resize: vertical;
@@ -1261,16 +1262,22 @@ h1 {
   outline: none;
 }
 
+/* 2-column rows */
 .notify-panel__row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
+/* Events row: give the events fieldset more horizontal room */
+.notify-panel__row--events {
+  grid-template-columns: 1fr 2fr;
+}
+
 .notify-panel__events {
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 8px 12px 10px;
+  padding: 8px 10px 10px;
 }
 
 .notify-panel__events legend {
@@ -1285,7 +1292,7 @@ h1 {
 .notify-panel__events-content {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 14px;
+  gap: 4px 16px;
 }
 
 .notify-panel__events-content label {
@@ -1295,6 +1302,7 @@ h1 {
   font-size: 0.82rem;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .notify-panel__events-content input[type="checkbox"] {
@@ -1302,6 +1310,7 @@ h1 {
   height: 14px;
   accent-color: var(--blue);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 #notify-save {
@@ -1337,7 +1346,7 @@ h1 {
   cursor: not-allowed;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 520px) {
   .alert-controls__notify-panel {
     right: -8px;
     width: calc(100vw - 24px);

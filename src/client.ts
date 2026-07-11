@@ -1018,8 +1018,8 @@ const buildNotifyPanel = (s: NotifySettingsUI): HTMLElement =>
         disabled: s.enabled ? undefined : 'true',
       }),
     ]),
-    // Format + Events row
-    createElement('div', { class: 'notify-panel__row' }, [
+    // Format + Events row (events get extra width to avoid stacking)
+    createElement('div', { class: 'notify-panel__row notify-panel__row--events' }, [
       createElement('div', { class: 'notify-panel__field' }, [
         createElement('label', { for: 'notify-format' }, ['Format']),
         createElement('select', {
