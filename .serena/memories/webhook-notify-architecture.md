@@ -12,9 +12,10 @@ The dashboard fires outbound webhooks on session lifecycle events. Configured vi
 
 ## Event types (NOTIFY_ON)
 - `started` — new session registered (POST without existing id)
-- `finished` — status transitions to green
-- `red` — status transitions to red (needs attention)
-Yellow ↔ orange transitions intentionally do NOT fire (too noisy).
+- `finished` — status transitions to green (Claude finished)
+- `idle` — status transitions to yellow (waiting for input)
+- `working` — status transitions to orange (actively working)
+- `attention` — status transitions to red (needs attention)).
 
 ## Key env vars
 - NOTIFY_WEBHOOK_URL — required to enable; URL to POST to
