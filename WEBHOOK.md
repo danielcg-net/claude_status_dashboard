@@ -10,21 +10,27 @@ lifecycle events and you choose where it lands.
 |---|---|---|
 | `NOTIFY_WEBHOOK_URL` | _(none)_ | URL to POST to. **Required** to enable notifications. |
 | `NOTIFY_FORMAT` | `generic` | `generic` \| `pushover` \| `teams` \| `slack` \| `discord` |
-| `NOTIFY_ON` | `started,finished,red` | Comma-separated: `started`, `finished`, `red` |
+| `NOTIFY_ON` | `started,finished,idle,working,attention` | Comma-separated (see below) |
 | `NOTIFY_HEADERS` | _(none)_ | Extra HTTP headers as a JSON string |
 | `NOTIFY_PUSHOVER_TOKEN` | _(none)_ | Pushover app token |
 | `NOTIFY_PUSHOVER_USER` | _(none)_ | Pushover user key |
 
 ## Event types
 
-| Event | Fires when |
-|-------|-----------|
-| `started` | A new Claude Code session registers for the first time |
-| `finished` | A session transitions to **green** (Claude finished running) |
-| `red` | A session transitions to **red** (needs your approval or attention) |
+Events are named after what's happening, not colours:
 
-Yellow ↔ orange transitions intentionally don't fire — they'd be too noisy.
-Set `NOTIFY_ON=red` if you only want alerts.
+| Event | Status | Fires when |
+|-------|--------|-----------|
+| `started` | — | A new Claude Code session registers for the first time |
+| `finished` | 🟢 green | Claude finished running |
+| `idle` | 🟡 yellow | Idle — waiting for your input |
+| `working` | 🟠 orange | Actively thinking or using tools |
+| `attention` | 🔴 red | Needs your approval or attention |
+
+All five are on by default. Filter with `NOTIFY_ON`:
+- **Alerts only:** `NOTIFY_ON=attention`
+- **Know when Claude is waiting:** `NOTIFY_ON=idle`
+- **Idle + alerts:** `NOTIFY_ON=idle,attention`
 
 ## Enabling notifications
 
@@ -55,7 +61,7 @@ a native Apple Watch app. **$5 one-time purchase** (no subscription).
 2. Install the [Pushover iOS app](https://apps.apple.com/us/app/pushover-notifications/id506088175).
    Notifications will automatically appear on your Apple Watch — no extra setup.
 3. Log in at [pushover.net](https://pushover.net) and copy your **User Key**
-   (a 30-char string like `uXyZ99...`).
+   (a 30-char string like `ucj2wjj4pz63ogxf1yb4fvw9ff7mhb`).
 4. Go to [pushover.net/apps/build](https://pushover.net/apps/build), give your
    app a name (e.g. "Claude Dashboard"), and copy the **API Token/Key**
    (a 30-char string like `a1b2c3...`).
@@ -66,13 +72,13 @@ a native Apple Watch app. **$5 one-time purchase** (no subscription).
 environment:
   NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
   NOTIFY_FORMAT: "pushover"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "idle"
   NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
-  NOTIFY_PUSHOVER_USER: "uXyZ99-your-user-key"
+  NOTIFY_PUSHOVER_USER: "ucj2wjj4pz63ogxf1yb4fvw9ff7mhb"
 ```
 
-Red alerts get **priority 1** (bypass quiet hours on iOS), everything else gets
-priority 0. You'll feel a tap on your wrist whenever Claude needs attention.
+`attention` events get **priority 1** (bypass quiet hours on iOS), everything
+else gets priority 0.
 
 ### Option B: ntfy.sh (free)
 
@@ -93,7 +99,7 @@ Free public server, or self-host your own. The iOS app forwards to Apple Watch.
 environment:
   NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts-abc123"
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "idle"
 ```
 
 The `generic` format sends a plain JSON payload — the ntfy app shows the
@@ -104,7 +110,7 @@ title and message, you can use ntfy's header-based API instead:
 environment:
   NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts-abc123"
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
   NOTIFY_HEADERS: "{\"Title\":\"Claude needs you\",\"Priority\":\"high\",\"Tags\":\"rotating_light\"}"
 ```
 
@@ -132,12 +138,11 @@ The dashboard always sends JSON; ntfy picks up any headers you pass.
 environment:
   NOTIFY_WEBHOOK_URL: "https://hooks.slack.com/services/T00000000/B00000000/xxxxxxxxxxxx"
   NOTIFY_FORMAT: "slack"
-  NOTIFY_ON: "started,finished,red"
+  NOTIFY_ON: "idle,attention"
 ```
 
 Messages appear as mrkdwn-formatted blocks with emoji indicators (🟢 started,
-✅ finished, 🔴 needs attention). All three events fire by default — adjust
-`NOTIFY_ON` to taste.
+✅ finished, 🟡 idle, 🟠 working, 🔴 attention).
 
 ### Fine print
 
@@ -172,13 +177,13 @@ Messages appear as mrkdwn-formatted blocks with emoji indicators (🟢 started,
 environment:
   NOTIFY_WEBHOOK_URL: "https://your-org.webhook.office.com/webhookb2/..."
   NOTIFY_FORMAT: "teams"
-  NOTIFY_ON: "started,finished,red"
+  NOTIFY_ON: "idle,attention"
 ```
 
 Messages post as Office 365 MessageCards with:
 - A **title** ("Claude Status Dashboard")
-- A **theme color** matching the event (red for alerts, green for finished,
-  blue for started)
+- A **theme colour** matching the event (blue for started, green for finished,
+  yellow for idle, orange for working, red for attention)
 - A **facts table** with session name, status, and detail
 - The message text in the card body
 
@@ -198,7 +203,7 @@ If Incoming Webhooks are disabled, use Power Automate instead:
 environment:
   NOTIFY_WEBHOOK_URL: "https://prod-123.westus.logic.azure.com:443/workflows/..."
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
 ```
 
 ### Fine print
@@ -228,10 +233,10 @@ environment:
 environment:
   NOTIFY_WEBHOOK_URL: "https://discord.com/api/webhooks/1234567890/abcdefghijklmnop"
   NOTIFY_FORMAT: "discord"
-  NOTIFY_ON: "started,finished,red"
+  NOTIFY_ON: "idle,attention"
 ```
 
-Discord messages use embeds with a colored sidebar per event type.
+Discord messages use embeds with a coloured sidebar per event type.
 
 ---
 
@@ -241,13 +246,13 @@ Set `NOTIFY_FORMAT=generic` and the dashboard POSTs this JSON to your URL:
 
 ```json
 {
-  "event": "red",
+  "event": "idle",
   "timestamp": "2026-07-10T20:45:00.000Z",
   "session": {
     "id": "session-abc123",
     "name": "my-project",
-    "status": "red",
-    "detail": "Claude needs approval for Bash tool",
+    "status": "yellow",
+    "detail": "Claude is waiting for your input",
     "usageProject": "/home/user/my-project"
   }
 }
@@ -270,11 +275,11 @@ This is a plain, predictable schema. Any automation platform can consume it:
 environment:
   NOTIFY_WEBHOOK_URL: "https://hooks.zapier.com/hooks/catch/123456/abcdef/"
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
 ```
 
-Zapier catches the JSON, a filter step checks `event == "red"`, and an SMS
-action texts your phone.
+Zapier catches the JSON, a filter step checks `event == "attention"`, and an
+SMS action texts your phone.
 
 ---
 
@@ -285,7 +290,7 @@ action texts your phone.
 1. Check that `NOTIFY_WEBHOOK_URL` is set and the container was rebuilt
    (`docker compose up -d --build`).
 2. Confirm the event you want is in `NOTIFY_ON` (default is
-   `started,finished,red`).
+   `started,finished,idle,working,attention`).
 3. The server logs notification failures silently by design (so the API stays
    fast). To debug, temporarily add `console.log` in `src/notify.ts`'s
    `fetch().catch()` block, or test your webhook URL manually:
@@ -293,7 +298,7 @@ action texts your phone.
    ```bash
    curl -X POST "YOUR_WEBHOOK_URL" \
      -H "Content-Type: application/json" \
-     -d '{"event":"red","timestamp":"2026-01-01T00:00:00Z","session":{"id":"test","name":"test","status":"red","detail":"manual test"}}'
+     -d '{"event":"idle","timestamp":"2026-01-01T00:00:00Z","session":{"id":"test","name":"test","status":"yellow","detail":"manual test"}}'
    ```
 
 4. If `curl` works but the dashboard doesn't, verify the container can reach
@@ -314,7 +319,7 @@ Pushover's priority 1 ("high") bypasses iOS quiet hours. Make sure:
 - Your Apple Watch is set to mirror iPhone alerts (Watch app → Notifications →
   Pushover → Mirror my iPhone).
 - You're using the `pushover` format — the dashboard sets `priority: 1` for
-  `red` events automatically.
+  `attention` events automatically.
 
 ### ntfy: messages show raw JSON
 
