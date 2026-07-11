@@ -959,10 +959,223 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
   ])
 }
 
-const renderAlertControls = (): HTMLElement => {
-  const s = state.notifySettings
-  const notifyOpen = state.notifySettingsOpen
+// ── Persistent alert controls (never destroyed, updated in-place) ──
+// The full-DOM rebuild every 2s destroys <select> dropdowns and clears text
+// selections.  We keep the alert-controls container alive and only mutate
+// properties of its children so interactive state (open dropdowns, focus,
+// selections) survives refreshes.
 
+let alertControlsRoot: HTMLElement | null = null
+let notifyPanelEl: HTMLElement | null = null
+let alertControlsLive = false
+
+// Helper: sync an input's value only when it is NOT focused (user is not
+// actively editing it), avoiding clobbering in-progress typing.
+const syncTextLike = (el: HTMLInputElement | HTMLTextAreaElement | null | undefined, value: string): void => {
+  if (!el || document.activeElement === el) return
+  if (el.value !== value) el.value = value
+}
+
+const syncCheckbox = (el: HTMLInputElement | null | undefined, checked: boolean): void => {
+  if (!el) return
+  if (el.checked !== checked) el.checked = checked
+}
+
+const syncDisabled = (el: HTMLElement | null | undefined, disabled: boolean): void => {
+  if (!el) return
+  if (disabled) el.setAttribute('disabled', 'true')
+  else el.removeAttribute('disabled')
+}
+
+const buildNotifyPanel = (s: NotifySettingsUI): HTMLElement =>
+  createElement('div', { class: 'alert-controls__notify-panel' }, [
+    // Header
+    createElement('div', { class: 'notify-panel__header' }, [
+      createElement('h3', {}, ['Notification Settings']),
+      createElement('button', {
+        class: 'notify-panel__close',
+        type: 'button',
+        'aria-label': 'Close notification settings',
+      }, ['✕']),
+    ]),
+    // Enable toggle
+    createElement('label', { class: 'notify-panel__toggle' }, [
+      createElement('input', {
+        id: 'notify-enabled',
+        type: 'checkbox',
+        checked: s.enabled ? 'true' : undefined,
+      }),
+      createElement('span', {}, ['Enable webhook notifications']),
+    ]),
+    // Webhook URL
+    createElement('div', { class: 'notify-panel__field' }, [
+      createElement('label', { for: 'notify-webhook-url' }, ['Webhook URL']),
+      createElement('input', {
+        id: 'notify-webhook-url',
+        type: 'url',
+        value: s.webhookUrl,
+        placeholder: 'https://api.pushover.net/1/messages.json',
+        disabled: s.enabled ? undefined : 'true',
+      }),
+    ]),
+    // Format + Events row
+    createElement('div', { class: 'notify-panel__row' }, [
+      createElement('div', { class: 'notify-panel__field' }, [
+        createElement('label', { for: 'notify-format' }, ['Format']),
+        createElement('select', {
+          id: 'notify-format',
+          disabled: s.enabled ? undefined : 'true',
+        }, notifyFormatOptions.map(f =>
+          createElement('option', { value: f, selected: s.format === f ? 'true' : undefined }, [f]),
+        )),
+      ]),
+      createElement('fieldset', { class: 'notify-panel__events', disabled: s.enabled ? undefined : 'true' }, [
+        createElement('legend', {}, ['Events']),
+        createElement('div', { class: 'notify-panel__events-content' },
+          notifyEventOptions.map(event =>
+            createElement('label', {}, [
+              createElement('input', {
+                type: 'checkbox',
+                value: event,
+                checked: s.events.includes(event) ? 'true' : undefined,
+                disabled: s.enabled ? undefined : 'true',
+              }),
+              event,
+            ]),
+          ),
+        ),
+      ]),
+    ]),
+    // Pushover row
+    createElement('div', { class: 'notify-panel__row' }, [
+      createElement('div', { class: 'notify-panel__field' }, [
+        createElement('label', { for: 'notify-pushover-token' }, ['Pushover token']),
+        createElement('input', {
+          id: 'notify-pushover-token',
+          type: 'password',
+          placeholder: s.pushoverToken || '(not set)',
+          disabled: s.enabled ? undefined : 'true',
+        }),
+      ]),
+      createElement('div', { class: 'notify-panel__field' }, [
+        createElement('label', { for: 'notify-pushover-user' }, ['Pushover user key']),
+        createElement('input', {
+          id: 'notify-pushover-user',
+          type: 'password',
+          placeholder: s.pushoverUser || '(not set)',
+          disabled: s.enabled ? undefined : 'true',
+        }),
+      ]),
+    ]),
+    // Custom headers
+    createElement('div', { class: 'notify-panel__field' }, [
+      createElement('label', { for: 'notify-headers' }, ['Custom headers (JSON)']),
+      createElement('textarea', {
+        id: 'notify-headers',
+        rows: '2',
+        disabled: s.enabled ? undefined : 'true',
+      }, [JSON.stringify(s.headers, null, 2)]),
+    ]),
+    // Save
+    createElement('button', { id: 'notify-save', type: 'button' }, ['Save Settings']),
+  ])
+
+const syncNotifyPanelFields = (panel: HTMLElement, s: NotifySettingsUI): void => {
+  const enabled = s.enabled
+  syncCheckbox(panel.querySelector<HTMLInputElement>('#notify-enabled'), enabled)
+  syncTextLike(panel.querySelector<HTMLInputElement>('#notify-webhook-url'), s.webhookUrl)
+  syncDisabled(panel.querySelector<HTMLInputElement>('#notify-webhook-url'), !enabled)
+
+  // Format select: update selected option
+  const formatSel = panel.querySelector<HTMLSelectElement>('#notify-format')
+  if (formatSel) {
+    if (formatSel.value !== s.format) formatSel.value = s.format
+    syncDisabled(formatSel, !enabled)
+  }
+
+  // Event checkboxes
+  panel.querySelectorAll<HTMLInputElement>('.notify-panel__events input[type="checkbox"]').forEach(cb => {
+    syncCheckbox(cb, s.events.includes(cb.value))
+    syncDisabled(cb, !enabled)
+  })
+  const fieldset = panel.querySelector<HTMLFieldSetElement>('.notify-panel__events')
+  syncDisabled(fieldset, !enabled)
+
+  // Pushover fields (password — placeholder shows masked value, sync only when not focused)
+  const tokenInput = panel.querySelector<HTMLInputElement>('#notify-pushover-token')
+  if (tokenInput) {
+    tokenInput.placeholder = s.pushoverToken || '(not set)'
+    syncDisabled(tokenInput, !enabled)
+  }
+  const userInput = panel.querySelector<HTMLInputElement>('#notify-pushover-user')
+  if (userInput) {
+    userInput.placeholder = s.pushoverUser || '(not set)'
+    syncDisabled(userInput, !enabled)
+  }
+
+  // Headers textarea
+  syncTextLike(panel.querySelector<HTMLTextAreaElement>('#notify-headers'), JSON.stringify(s.headers, null, 2))
+  syncDisabled(panel.querySelector<HTMLTextAreaElement>('#notify-headers'), !enabled)
+
+  // Save button
+  syncDisabled(panel.querySelector<HTMLButtonElement>('#notify-save'), !enabled)
+}
+
+const syncAlertControlsInPlace = (): void => {
+  if (!alertControlsRoot) return
+
+  // Audio toggle button text
+  const audioBtn = alertControlsRoot.querySelector<HTMLButtonElement>('#audio-toggle')
+  if (audioBtn) {
+    const label = state.audioEnabled ? 'Mute beeps' : 'Enable beeps'
+    if (audioBtn.textContent !== label) audioBtn.textContent = label
+  }
+
+  // Alert-after-seconds (skip if focused — user is editing)
+  syncTextLike(
+    alertControlsRoot.querySelector<HTMLInputElement>('#alert-after-seconds'),
+    String(redAlertAfterSeconds(state)),
+  )
+
+  // Limit beeps
+  syncCheckbox(alertControlsRoot.querySelector<HTMLInputElement>('#limit-beeps'), state.maxBeeps !== null)
+
+  // Max beeps
+  const maxBeepsInput = alertControlsRoot.querySelector<HTMLInputElement>('#max-beeps')
+  if (maxBeepsInput) {
+    const val = state.maxBeeps !== null ? String(state.maxBeeps) : ''
+    syncTextLike(maxBeepsInput, val)
+    syncDisabled(maxBeepsInput, state.maxBeeps === null)
+  }
+
+  // Notify toggle active class
+  const notifyToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#notify-toggle')
+  if (notifyToggle) {
+    notifyToggle.classList.toggle('audio-toggle--active', state.notifySettingsOpen)
+  }
+
+  // ── Notify panel visibility transitions ──
+  const s = state.notifySettings
+  const shouldShow = state.notifySettingsOpen && s !== null
+
+  if (shouldShow && !notifyPanelEl) {
+    // Closed → open: build and insert
+    notifyPanelEl = buildNotifyPanel(s)
+    alertControlsRoot.append(notifyPanelEl)
+    attachNotifyPanelEvents()
+  } else if (shouldShow && notifyPanelEl) {
+    // Still open: sync fields in-place
+    syncNotifyPanelFields(notifyPanelEl, s)
+  } else if (!shouldShow && notifyPanelEl) {
+    // Open → closed: remove
+    notifyPanelEl.remove()
+    notifyPanelEl = null
+  }
+}
+
+// ── Build the initial alert controls DOM (first render only) ──
+
+const buildAlertControls = (): HTMLElement => {
   const children: HTMLElement[] = [
     createElement('div', { class: 'alert-controls__row' }, [
       createElement('label', { class: 'alert-controls__field' }, [
@@ -1001,201 +1214,19 @@ const renderAlertControls = (): HTMLElement => {
     ]),
     createElement('button', {
       id: 'notify-toggle',
-      class: `audio-toggle${notifyOpen ? ' audio-toggle--active' : ''}`,
+      class: `audio-toggle${state.notifySettingsOpen ? ' audio-toggle--active' : ''}`,
       type: 'button',
     }, ['Notifications']),
   ]
 
-  if (notifyOpen && s !== null) {
-    children.push(
-      createElement('div', { class: 'alert-controls__notify-panel' }, [
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('input', {
-            id: 'notify-enabled',
-            type: 'checkbox',
-            checked: s.enabled ? 'true' : undefined,
-          }),
-          createElement('span', { class: 'alert-controls__label' }, ['Enable webhook notifications']),
-        ]),
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('span', { class: 'alert-controls__label' }, ['Webhook URL']),
-          createElement('input', {
-            id: 'notify-webhook-url',
-            type: 'url',
-            value: s.webhookUrl,
-            placeholder: 'https://api.pushover.net/1/messages.json',
-            disabled: s.enabled ? undefined : 'true',
-          }),
-        ]),
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('span', { class: 'alert-controls__label' }, ['Format']),
-          createElement('select', {
-            id: 'notify-format',
-            disabled: s.enabled ? undefined : 'true',
-          }, notifyFormatOptions.map(f =>
-            createElement('option', { value: f, selected: s.format === f ? 'true' : undefined }, [f]),
-          )),
-        ]),
-        createElement('fieldset', { class: 'alert-controls__events', disabled: s.enabled ? undefined : 'true' }, [
-          createElement('legend', {}, ['Notify on']),
-          ...notifyEventOptions.map(event =>
-            createElement('label', { class: 'alert-controls__field' }, [
-              createElement('input', {
-                type: 'checkbox',
-                value: event,
-                checked: s.events.includes(event) ? 'true' : undefined,
-                disabled: s.enabled ? undefined : 'true',
-              }),
-              ` ${event}`,
-            ]),
-          ),
-        ]),
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('span', { class: 'alert-controls__label' }, ['Pushover token']),
-          createElement('input', {
-            id: 'notify-pushover-token',
-            type: 'password',
-            placeholder: s.pushoverToken || '(not set)',
-            disabled: s.enabled ? undefined : 'true',
-          }),
-        ]),
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('span', { class: 'alert-controls__label' }, ['Pushover user']),
-          createElement('input', {
-            id: 'notify-pushover-user',
-            type: 'password',
-            placeholder: s.pushoverUser || '(not set)',
-            disabled: s.enabled ? undefined : 'true',
-          }),
-        ]),
-        createElement('label', { class: 'alert-controls__field' }, [
-          createElement('span', { class: 'alert-controls__label' }, ['Custom headers (JSON)']),
-          createElement('textarea', {
-            id: 'notify-headers',
-            rows: '3',
-            disabled: s.enabled ? undefined : 'true',
-          }, [JSON.stringify(s.headers, null, 2)]),
-        ]),
-        createElement('button', { id: 'notify-save', class: 'audio-toggle', type: 'button' }, ['Save']),
-      ]),
-    )
-  }
-
   return createElement('div', { class: 'alert-controls', 'aria-label': 'Alert and notification controls' }, children)
 }
 
-const versionBannerDismissedKey = 'version-banner-dismissed'
+// ── One-time event listeners for alert controls (never re-attached) ──
 
-const renderUpdateBanner = (appState: AppState): HTMLElement | null => {
-  if (!appState.updateAvailable) return null
-  if (sessionStorage.getItem(versionBannerDismissedKey) === appState.latestVersion) return null
-
-  const latest = appState.latestVersion ?? 'unknown'
-  const current = __VERSION__
-
-  return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
-    createElement('div', { class: 'update-banner__body' }, [
-      createElement('span', { class: 'update-banner__icon' }, ['↑']),
-      createElement('span', {}, [
-        `A new version is available: `,
-        createElement('strong', {}, [`v${latest}`]),
-        ` (you are on v${current}). `,
-        createElement(
-          'a',
-          {
-            href: 'https://github.com/danielcg-net/claude_status_dashboard/releases',
-            target: '_blank',
-            rel: 'noopener',
-          },
-          ['View releases'],
-        ),
-      ]),
-    ]),
-    createElement('button', {
-      class: 'update-banner__dismiss',
-      type: 'button',
-      'aria-label': 'Dismiss update notification',
-      title: 'Dismiss',
-    }, ['✕']),
-  ])
-}
-
-const render = (): void => {
-  const banner = renderUpdateBanner(state)
-  const main = createElement('main', { class: 'shell' }, [
-      createElement('header', { class: 'header' }, [
-        createElement('div', {}, [
-          createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
-          createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
-        ]),
-        renderAlertControls(),
-      ]),
-      renderUsage(state.usage),
-      state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
-        createElement('h2', {}, ['Costs by repo']),
-        createElement('p', {}, ['ccusage data is not available.']),
-      ]),
-      createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
-        ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
-          createElement('div', { class: `summary__item summary__item--${status}` }, [
-            createElement('span', {}, [statusLabels[status]]),
-            createElement('strong', {}, [String(state.sessions.filter((session) => {
-              if (session.status !== status) return false
-              // Hide sessions whose usageProject or matched project is excluded
-              if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-              // When a repo is selected, only count sessions for that repo
-              if (state.selectedRepo) {
-                const project = findUsageProject(session, state.usage)
-                return project?.project === state.selectedRepo
-              }
-              return true
-            }).length)]),
-          ]),
-        ),
-      ]),
-      state.sessions.length === 0
-        ? createElement('section', { class: 'empty' }, [
-            createElement('h2', {}, ['No sessions registered']),
-            createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
-            createElement('pre', { class: 'empty__snippet' }, [
-              '{\n',
-              '  "hooks": {\n',
-              '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
-              '      "type": "command",\n',
-              '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-              '      "timeout": 5\n',
-              '    }] }],\n',
-              '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
-              '      "type": "command",\n',
-              '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-              '      "timeout": 5\n',
-              '    }] }]\n',
-              '  }\n',
-              '}',
-            ]),
-            createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
-            createElement('p', {}, ['Or test with curl:']),
-            createElement('pre', { class: 'empty__snippet' }, [
-              'curl -X POST http://localhost:8787/api/sessions \\\n',
-              '  -H "Content-Type: application/json" \\\n',
-              `  -d '{"name":"test","status":"orange"}'`,
-            ]),
-          ])
-        : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
-            .filter((session) => {
-              // Hide sessions whose usageProject or matched project is excluded
-              if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-              // When a repo is selected, only show sessions for that repo
-              if (state.selectedRepo) {
-                const project = findUsageProject(session, state.usage)
-                return project?.project === state.selectedRepo
-              }
-              return true
-            })
-            .map(renderSession)),
-    ])
-
-  root.replaceChildren(...[banner, main].filter((el): el is HTMLElement => el !== null))
+const attachAlertControlEvents = (): void => {
+  if (alertControlsLive) return
+  alertControlsLive = true
 
   document.querySelector('#audio-toggle')?.addEventListener('click', () => {
     state = { ...state, audioEnabled: !state.audioEnabled }
@@ -1246,6 +1277,190 @@ const render = (): void => {
     render()
   })
 
+  // Notify toggle: open/close settings panel
+  document.querySelector<HTMLButtonElement>('#notify-toggle')?.addEventListener('click', () => {
+    state = { ...state, notifySettingsOpen: !state.notifySettingsOpen }
+    render()
+  })
+}
+
+const attachNotifyPanelEvents = (): void => {
+  // Close button
+  document.querySelector('.notify-panel__close')?.addEventListener('click', () => {
+    state = { ...state, notifySettingsOpen: false }
+    render()
+  })
+
+  // Notify settings: enable/disable toggle (saves immediately)
+  document.querySelector<HTMLInputElement>('#notify-enabled')?.addEventListener('change', async (event) => {
+    const checked = (event.currentTarget as HTMLInputElement).checked
+    try {
+      const updated = await saveNotifySettings({ enabled: checked })
+      state = { ...state, notifySettings: updated }
+    } catch { /* ignore */ }
+    render()
+  })
+
+  // Notify settings: save button
+  document.querySelector<HTMLButtonElement>('#notify-save')?.addEventListener('click', async () => {
+    const body: Record<string, unknown> = {
+      webhookUrl: document.querySelector<HTMLInputElement>('#notify-webhook-url')?.value ?? '',
+      format: (document.querySelector<HTMLSelectElement>('#notify-format')?.value) ?? 'generic',
+      events: [...document.querySelectorAll<HTMLInputElement>('.notify-panel__events input[type="checkbox"]:checked')]
+        .map(el => el.value),
+      headers: (() => {
+        const raw = document.querySelector<HTMLTextAreaElement>('#notify-headers')?.value ?? ''
+        if (!raw.trim()) return {}
+        try { const p = JSON.parse(raw); return typeof p === 'object' && p !== null && !Array.isArray(p) ? p as Record<string, string> : {} } catch { return {} }
+      })(),
+    }
+    const tokenInput = document.querySelector<HTMLInputElement>('#notify-pushover-token')
+    if (tokenInput?.value) body.pushoverToken = tokenInput.value
+    const userInput = document.querySelector<HTMLInputElement>('#notify-pushover-user')
+    if (userInput?.value) body.pushoverUser = userInput.value
+
+    try {
+      const updated = await saveNotifySettings(body)
+      state = { ...state, notifySettings: updated }
+    } catch (err) {
+      console.error('Failed to save notify settings:', err)
+    }
+    render()
+  })
+}
+
+const versionBannerDismissedKey = 'version-banner-dismissed'
+
+// ── Persistent UI containers (survive refresh cycles) ──
+// The shell, header, and alert-controls are created once and never detached.
+// Only #app-body is replaced on each 2s cycle so interactive state (open
+// <select> dropdowns, text selections, focus) is preserved.
+let shellEl: HTMLElement | null = null
+let headerEl: HTMLElement | null = null
+let bodyWrapper: HTMLElement | null = null
+let bannerWrapper: HTMLElement | null = null
+let firstRender = true
+
+const renderUpdateBanner = (): HTMLElement | null => {
+  if (!state.updateAvailable) return null
+  if (sessionStorage.getItem(versionBannerDismissedKey) === state.latestVersion) return null
+
+  const latest = state.latestVersion ?? 'unknown'
+  const current = __VERSION__
+
+  return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
+    createElement('div', { class: 'update-banner__body' }, [
+      createElement('span', { class: 'update-banner__icon' }, ['↑']),
+      createElement('span', {}, [
+        `A new version is available: `,
+        createElement('strong', {}, [`v${latest}`]),
+        ` (you are on v${current}). `,
+        createElement(
+          'a',
+          {
+            href: 'https://github.com/danielcg-net/claude_status_dashboard/releases',
+            target: '_blank',
+            rel: 'noopener',
+          },
+          ['View releases'],
+        ),
+      ]),
+    ]),
+    createElement('button', {
+      class: 'update-banner__dismiss',
+      type: 'button',
+      'aria-label': 'Dismiss update notification',
+      title: 'Dismiss',
+    }, ['✕']),
+  ])
+}
+
+const syncBanner = (): void => {
+  if (!bannerWrapper) return
+  const newBanner = renderUpdateBanner()
+  const existingBanner = bannerWrapper.querySelector('.update-banner')
+
+  if (!newBanner && existingBanner) {
+    existingBanner.remove()
+  } else if (newBanner && !existingBanner) {
+    bannerWrapper.replaceChildren(newBanner)
+  } else if (newBanner && existingBanner) {
+    // Banner content is static once rendered; only replace if it changed.
+    // We check the latest version text to detect changes.
+    const newStrong = newBanner.querySelector('strong')?.textContent
+    const oldStrong = existingBanner.querySelector('strong')?.textContent
+    if (newStrong && newStrong !== oldStrong) {
+      bannerWrapper.replaceChildren(newBanner)
+    }
+  }
+}
+
+// Build the body content (everything below the header).  This is the part
+// that gets rebuilt on each 2s refresh cycle.
+const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
+  renderUsage(state.usage),
+  state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
+    createElement('h2', {}, ['Costs by repo']),
+    createElement('p', {}, ['ccusage data is not available.']),
+  ]),
+  createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
+    ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
+      createElement('div', { class: `summary__item summary__item--${status}` }, [
+        createElement('span', {}, [statusLabels[status]]),
+        createElement('strong', {}, [String(state.sessions.filter((session) => {
+          if (session.status !== status) return false
+          if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+          if (state.selectedRepo) {
+            const project = findUsageProject(session, state.usage)
+            return project?.project === state.selectedRepo
+          }
+          return true
+        }).length)]),
+      ]),
+    ),
+  ]),
+  state.sessions.length === 0
+    ? createElement('section', { class: 'empty' }, [
+        createElement('h2', {}, ['No sessions registered']),
+        createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
+        createElement('pre', { class: 'empty__snippet' }, [
+          '{\n',
+          '  "hooks": {\n',
+          '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
+          '      "type": "command",\n',
+          '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+          '      "timeout": 5\n',
+          '    }] }],\n',
+          '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
+          '      "type": "command",\n',
+          '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+          '      "timeout": 5\n',
+          '    }] }]\n',
+          '  }\n',
+          '}',
+        ]),
+        createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
+        createElement('p', {}, ['Or test with curl:']),
+        createElement('pre', { class: 'empty__snippet' }, [
+          'curl -X POST http://localhost:8787/api/sessions \\\n',
+          '  -H "Content-Type: application/json" \\\n',
+          `  -d '{"name":"test","status":"orange"}'`,
+        ]),
+      ])
+    : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
+        .filter((session) => {
+          if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+          if (state.selectedRepo) {
+            const project = findUsageProject(session, state.usage)
+            return project?.project === state.selectedRepo
+          }
+          return true
+        })
+        .map(renderSession)),
+]
+
+// Attach event listeners for body content (re-attached after each rebuild).
+const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
     button.addEventListener('click', () => {
       state = { ...state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null }
@@ -1303,49 +1518,57 @@ const render = (): void => {
     state = { ...state, updateAvailable: false }
     render()
   })
+}
 
-  // Notify toggle: open/close settings panel
-  document.querySelector<HTMLButtonElement>('#notify-toggle')?.addEventListener('click', () => {
-    state = { ...state, notifySettingsOpen: !state.notifySettingsOpen }
-    render()
-  })
+const render = (): void => {
+  if (firstRender) {
+    // ── First render: create persistent containers ──
+    bannerWrapper = createElement('div', { id: 'app-banner' })
+    shellEl = createElement('main', { class: 'shell' })
+    headerEl = createElement('header', { class: 'header' })
+    bodyWrapper = createElement('div', { id: 'app-body' })
 
-  // Notify settings: enable/disable toggle (saves immediately)
-  document.querySelector<HTMLInputElement>('#notify-enabled')?.addEventListener('change', async (event) => {
-    const checked = (event.currentTarget as HTMLInputElement).checked
-    try {
-      const updated = await saveNotifySettings({ enabled: checked })
-      state = { ...state, notifySettings: updated }
-    } catch { /* ignore */ }
-    render()
-  })
+    // Build header content
+    const banner = renderUpdateBanner()
+    if (banner) bannerWrapper.append(banner)
 
-  // Notify settings: save button
-  document.querySelector<HTMLButtonElement>('#notify-save')?.addEventListener('click', async () => {
-    const body: Record<string, unknown> = {
-      webhookUrl: document.querySelector<HTMLInputElement>('#notify-webhook-url')?.value ?? '',
-      format: (document.querySelector<HTMLSelectElement>('#notify-format')?.value) ?? 'generic',
-      events: [...document.querySelectorAll<HTMLInputElement>('.alert-controls__events input[type="checkbox"]:checked')]
-        .map(el => el.value),
-      headers: (() => {
-        const raw = document.querySelector<HTMLTextAreaElement>('#notify-headers')?.value ?? ''
-        if (!raw.trim()) return {}
-        try { const p = JSON.parse(raw); return typeof p === 'object' && p !== null && !Array.isArray(p) ? p as Record<string, string> : {} } catch { return {} }
-      })(),
+    alertControlsRoot = buildAlertControls()
+    headerEl.append(
+      createElement('div', {}, [
+        createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
+        createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
+      ]),
+      alertControlsRoot,
+    )
+
+    shellEl.append(headerEl, bodyWrapper)
+    root.replaceChildren(...[bannerWrapper, shellEl].filter((el): el is HTMLElement => el !== null))
+
+    // Initial body content
+    bodyWrapper.replaceChildren(...buildBodyContent())
+
+    // One-time alert-control event listeners
+    attachAlertControlEvents()
+
+    // Body event listeners
+    attachBodyEvents()
+
+    // Show notify panel if already open at startup
+    if (state.notifySettingsOpen && state.notifySettings) {
+      notifyPanelEl = buildNotifyPanel(state.notifySettings)
+      alertControlsRoot.append(notifyPanelEl)
+      attachNotifyPanelEvents()
     }
-    const tokenInput = document.querySelector<HTMLInputElement>('#notify-pushover-token')
-    if (tokenInput?.value) body.pushoverToken = tokenInput.value
-    const userInput = document.querySelector<HTMLInputElement>('#notify-pushover-user')
-    if (userInput?.value) body.pushoverUser = userInput.value
 
-    try {
-      const updated = await saveNotifySettings(body)
-      state = { ...state, notifySettings: updated }
-    } catch (err) {
-      console.error('Failed to save notify settings:', err)
-    }
-    render()
-  })
+    firstRender = false
+    return
+  }
+
+  // ── Subsequent renders: sync persistent sections, rebuild body ──
+  syncBanner()
+  syncAlertControlsInPlace()
+  bodyWrapper!.replaceChildren(...buildBodyContent())
+  attachBodyEvents()
 }
 
 const refresh = async (): Promise<void> => {
