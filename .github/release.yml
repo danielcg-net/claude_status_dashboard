@@ -1,0 +1,32 @@
+# Configuration for auto-generated release notes.
+# GitHub uses PR labels to categorize merged pull requests in each release.
+changelog:
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking
+        - breaking-change
+        - major
+    - title: New Features
+      labels:
+        - feature
+        - enhancement
+        - feat
+    - title: Bug Fixes
+      labels:
+        - bug
+        - fix
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Maintenance
+      labels:
+        - chore
+        - maintenance
+        - dependencies
+        - refactor
+        - ci
+    - title: Other Changes
+      labels:
+        - "*"
