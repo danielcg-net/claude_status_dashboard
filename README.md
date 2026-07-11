@@ -172,6 +172,83 @@ The page also stores these controls in the browser:
 
 ---
 
+## Webhook Notifications
+
+Get pinged on your Apple Watch, phone, Slack, Teams, or anywhere else when Claude needs your attention. The dashboard fires an outbound webhook on session lifecycle events and you choose where it lands.
+
+> Full setup guides for Apple Watch (Pushover & ntfy), Slack, Teams, Discord,
+> and generic webhook platforms are in **[WEBHOOK.md](WEBHOOK.md)**.
+
+### Supported formats
+
+| Format | Service | Watch support | Setup |
+|--------|---------|:---:|---|
+| `pushover` | [Pushover](https://pushover.net) | ✅ Native | $5 one-time, install the app, grab user key |
+| `teams` | Microsoft Teams | Via Teams app | Create an [Incoming Webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook) in a channel |
+| `slack` | Slack | Via Slack app | Create a [Slack Incoming Webhook](https://api.slack.com/messaging/webhooks) |
+| `discord` | Discord | Via Discord app | Create a [Discord Webhook](https://support.discord.com/hc/en-us/articles/228383668) in a server |
+| `generic` | Anything (Zapier, Make, n8n, ntfy.sh, …) | Depends | Plain JSON POST — transform it downstream |
+
+### Configuration
+
+Add these to `compose.yml` under `environment`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `NOTIFY_WEBHOOK_URL` | _(none)_ | URL to POST to. **Required** to enable notifications. |
+| `NOTIFY_FORMAT` | `generic` | Payload shape: `generic` \| `pushover` \| `teams` \| `slack` \| `discord` |
+| `NOTIFY_ON` | `started,finished,red` | Comma-separated events: `started`, `finished`, `red` |
+| `NOTIFY_HEADERS` | _(none)_ | Extra HTTP headers as a JSON object, e.g. `{"Authorization":"Bearer xxx"}` |
+| `NOTIFY_PUSHOVER_TOKEN` | _(none)_ | Pushover app token (only needed for `pushover` format) |
+| `NOTIFY_PUSHOVER_USER` | _(none)_ | Pushover user key (only needed for `pushover` format) |
+
+### Event types
+
+| Event | Fires when |
+|-------|-----------|
+| `started` | A new Claude Code session registers for the first time |
+| `finished` | A session transitions to green (Claude finished running) |
+| `red` | A session transitions to red (needs your approval or attention) |
+
+Yellow ↔ orange transitions don't fire notifications (too noisy). If you only want alerts and nothing else, set `NOTIFY_ON=red`.
+
+### Example: Pushover → Apple Watch
+
+```yaml
+environment:
+  NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
+  NOTIFY_FORMAT: "pushover"
+  NOTIFY_ON: "red"
+  NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
+  NOTIFY_PUSHOVER_USER: "uXyZ99-your-user-key"
+```
+
+You'll get a tap on your wrist whenever Claude needs attention.
+
+### Example: Microsoft Teams channel
+
+```yaml
+environment:
+  NOTIFY_WEBHOOK_URL: "https://your-org.webhook.office.com/webhookb2/..."
+  NOTIFY_FORMAT: "teams"
+  NOTIFY_ON: "started,finished,red"
+```
+
+A card posts to the channel each time a session starts, finishes, or needs attention.
+
+### Example: ntfy.sh (free, self-hostable)
+
+```yaml
+environment:
+  NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts"
+  NOTIFY_FORMAT: "generic"
+  NOTIFY_ON: "red"
+```
+
+Then install the [ntfy iOS app](https://ntfy.sh) — notifications arrive on your Apple Watch too.
+
+---
+
 ## Updating the Plugin
 
 After pulling new changes, reinstall the plugin to pick up the latest hook script:

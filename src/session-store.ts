@@ -51,12 +51,13 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
 }
 
 export const saveSessions = async (dataDir: string, sessions: SessionStore): Promise<void> => {
-  const filePath = join(resolve(dataDir), SESSION_FILE)
+  const dir = resolve(dataDir)
+  const filePath = join(dir, SESSION_FILE)
   const tmpPath = `${filePath}.tmp`
   try {
-    await mkdir(dataDir, { recursive: true })
+    await mkdir(dir, { recursive: true })
   } catch (error) {
-    console.error(`Failed to create session cache directory (${dataDir}):`, error)
+    console.error(`Failed to create session cache directory (${dir}):`, error)
     return
   }
   try {

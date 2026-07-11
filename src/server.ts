@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionSchema,
 } from './domain.js'
+import { eventForStatus, notify } from './notify.js'
 import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
 import { checkLatestVersion, compareVersions, getVersion } from './version.js'
@@ -112,20 +113,37 @@ app.get('/api/usage', async (context) => {
 
 app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
+  const previous = input.id ? state.sessions.get(input.id) : undefined
   const [sessions, session] = registerSession(state.sessions, input)
   state = { sessions }
   enqueueSave()
+
+  // Fire notifications on session lifecycle events (fire-and-forget).
+  if (!previous) {
+    notify('started', session)
+  } else if (previous.status !== session.status) {
+    const event = eventForStatus(session.status)
+    if (event) notify(event, session)
+  }
 
   return context.json({ session }, 201)
 })
 
 app.patch('/api/sessions/:id', async (context) => {
   const input = await parseJson(context.req.raw, updateSessionSchema)
-  const [sessions, session] = updateSession(state.sessions, context.req.param('id'), input)
+  const id = context.req.param('id')
+  const previous = state.sessions.get(id)
+  const [sessions, session] = updateSession(state.sessions, id, input)
   state = { sessions }
 
   if (!session) {
     throw new HTTPException(404, { message: 'Session not found.' })
+  }
+
+  // Fire notification on status change (fire-and-forget).
+  if (previous && previous.status !== session.status) {
+    const event = eventForStatus(session.status)
+    if (event) notify(event, session)
   }
 
   enqueueSave()

@@ -3,10 +3,19 @@ import { getVersion } from '../src/version.js'
 
 const mockFetchUsageSummary = vi.hoisted(() => vi.fn())
 const mockCheckLatestVersion = vi.hoisted(() => vi.fn())
+const mockNotify = vi.hoisted(() => vi.fn())
 
 vi.mock('../src/usage.js', () => ({
   fetchUsageSummary: mockFetchUsageSummary,
 }))
+
+vi.mock('../src/notify.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/notify.js')>()
+  return {
+    ...actual,
+    notify: mockNotify,
+  }
+})
 
 vi.mock('../src/version.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/version.js')>()
@@ -34,6 +43,7 @@ import { app, __resetForTests } from '../src/server.js'
 
 beforeEach(() => {
   __resetForTests()
+  mockNotify.mockClear()
 })
 
 describe('GET /api/health', () => {
@@ -277,5 +287,150 @@ describe('GET /api/version', () => {
     expect(secondBody.latestVersion).toBe('1.0.0')
 
     expect(mockCheckLatestVersion).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('notification integration', () => {
+  it('fires "started" event when a new session is created via POST', async () => {
+    const res = await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'new-project', status: 'orange' }),
+    })
+    expect(res.status).toBe(201)
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'started',
+      expect.objectContaining({ name: 'new-project' }),
+    )
+  })
+
+  it('fires "finished" event when an existing session transitions to green via POST', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'finishing', name: 'wrapping-up', status: 'orange' }),
+    })
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'finishing', status: 'green' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'finished',
+      expect.objectContaining({ name: 'wrapping-up', status: 'green' }),
+    )
+  })
+
+  it('fires "red" event when a session transitions to red via POST', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'alert-me', name: 'urgent', status: 'yellow' }),
+    })
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'alert-me', status: 'red' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'red',
+      expect.objectContaining({ name: 'urgent', status: 'red' }),
+    )
+  })
+
+  it('does not fire when status stays the same via POST', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'no-change', name: 'steady', status: 'yellow' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'no-change', status: 'yellow', detail: 'still here' }),
+    })
+
+    expect(mockNotify).not.toHaveBeenCalled()
+  })
+
+  it('fires "finished" event on PATCH to green', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'patch-finish', name: 'done', status: 'orange' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions/patch-finish', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'green' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'finished',
+      expect.objectContaining({ name: 'done', status: 'green' }),
+    )
+  })
+
+  it('fires "red" event on PATCH to red', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'patch-red', name: 'help', status: 'yellow' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions/patch-red', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'red', detail: 'needs approval' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'red',
+      expect.objectContaining({ name: 'help', detail: 'needs approval' }),
+    )
+  })
+
+  it('does not fire on PATCH with no status change', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'patch-steady', name: 'same', status: 'yellow' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions/patch-steady', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'yellow', detail: 'updated detail only' }),
+    })
+
+    expect(mockNotify).not.toHaveBeenCalled()
+  })
+
+  it('does not fire when only detail changes (no status transition)', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'detail-only', name: 'details', status: 'orange' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'detail-only', detail: 'updated' }),
+    })
+
+    expect(mockNotify).not.toHaveBeenCalled()
   })
 })
