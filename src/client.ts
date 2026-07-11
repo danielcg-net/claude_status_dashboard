@@ -257,9 +257,8 @@ const handleAlertState = (appState: AppState): AppState => {
 
   const hasTrigger = matchingSessions.length > 0 || newSessions.length > 0
 
-  // Update seen-session set
-  const nextSeenIds = new Set(appState.seenSessionIds)
-  for (const s of appState.sessions) nextSeenIds.add(s.id)
+  // Update seen-session set — build fresh from current sessions to prune evicted ones
+  const nextSeenIds = new Set(appState.sessions.map((s) => s.id))
 
   if (!appState.audioEnabled || !hasTrigger) {
     document.title = originalTitle
@@ -1384,15 +1383,36 @@ const attachBeepPanelEvents = (): void => {
     }
   })
 
-  // Enable toggle (saves immediately)
+  // Enable toggle (saves all panel values immediately)
   document.querySelector<HTMLInputElement>('#beep-enabled')?.addEventListener('change', async (event) => {
-    const checked = (event.currentTarget as HTMLInputElement).checked
-    const alertAfterMs = state.beepSettings?.alertAfterMs ?? null
-    const maxBeeps = state.beepSettings?.maxBeeps ?? null
-    const events = state.beepSettings?.events ?? ['attention']
+    const enabled = (event.currentTarget as HTMLInputElement).checked
+
+    const alertAfterInput = document.querySelector<HTMLInputElement>('#alert-after-seconds')
+    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(state) / 1000)
+    const alertAfterMs = Number.isFinite(seconds) ? seconds * 1000 : null
+
+    const limitChecked = document.querySelector<HTMLInputElement>('#limit-beeps')?.checked ?? false
+    const maxBeepsInput = document.querySelector<HTMLInputElement>('#max-beeps')
+    const maxBeeps: number | null = (() => {
+      if (!limitChecked) return null
+      if (!maxBeepsInput || !maxBeepsInput.value.trim()) return null
+      const raw = maxBeepsInput.valueAsNumber
+      if (Number.isNaN(raw)) return state.beepSettings?.maxBeeps ?? 5
+      return Math.max(1, Math.floor(raw))
+    })()
+
+    const events = [...document.querySelectorAll<HTMLInputElement>('.beep-panel__events input[type="checkbox"]:checked')]
+      .map(el => el.value)
+
     try {
-      const updated = await saveBeepSettings({ enabled: checked, alertAfterMs, maxBeeps, events })
-      state = { ...state, beepSettings: updated, audioEnabled: checked }
+      const updated = await saveBeepSettings({ enabled, alertAfterMs, maxBeeps, events })
+      state = {
+        ...state,
+        beepSettings: updated,
+        audioEnabled: enabled,
+        redAlertAfterOverrideMs: updated.alertAfterMs,
+        maxBeeps: updated.maxBeeps,
+      }
     } catch { /* ignore */ }
     render()
   })
