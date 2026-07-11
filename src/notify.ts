@@ -196,6 +196,8 @@ export function notify(event: NotifyEvent, session: Session): void {
   if (!shouldNotify(event)) return
 
   const builder = builders[NOTIFY_FORMAT]
+  if (!builder) return // unknown format — silently skip
+
   const { body, headers } = builder(event, session)
 
   fetch(NOTIFY_WEBHOOK_URL, { method: 'POST', headers, body }).catch(() => {

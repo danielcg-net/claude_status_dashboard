@@ -253,4 +253,15 @@ describe('notify', () => {
     // Must not throw.
     expect(() => notify('red', makeSession())).not.toThrow()
   })
+
+  it('does not throw with an unknown NOTIFY_FORMAT', async () => {
+    const { notify } = await importNotify({
+      NOTIFY_WEBHOOK_URL: 'https://hooks.example.com/push',
+      NOTIFY_ON: 'red',
+      NOTIFY_FORMAT: 'invalid-format',
+    })
+    // Must silently skip — no fetch, no throw.
+    expect(() => notify('red', makeSession())).not.toThrow()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
 })
