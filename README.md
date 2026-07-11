@@ -197,20 +197,25 @@ Add these to `compose.yml` under `environment`:
 |---|---|---|
 | `NOTIFY_WEBHOOK_URL` | _(none)_ | URL to POST to. **Required** to enable notifications. |
 | `NOTIFY_FORMAT` | `generic` | Payload shape: `generic` \| `pushover` \| `teams` \| `slack` \| `discord` |
-| `NOTIFY_ON` | `started,finished,red` | Comma-separated events: `started`, `finished`, `red` |
+| `NOTIFY_ON` | `started,finished,idle,working,attention` | Comma-separated events (see below) |
 | `NOTIFY_HEADERS` | _(none)_ | Extra HTTP headers as a JSON object, e.g. `{"Authorization":"Bearer xxx"}` |
 | `NOTIFY_PUSHOVER_TOKEN` | _(none)_ | Pushover app token (only needed for `pushover` format) |
 | `NOTIFY_PUSHOVER_USER` | _(none)_ | Pushover user key (only needed for `pushover` format) |
 
 ### Event types
 
-| Event | Fires when |
-|-------|-----------|
-| `started` | A new Claude Code session registers for the first time |
-| `finished` | A session transitions to green (Claude finished running) |
-| `red` | A session transitions to red (needs your approval or attention) |
+Events are named after what's happening, not colors:
 
-Yellow ↔ orange transitions don't fire notifications (too noisy). If you only want alerts and nothing else, set `NOTIFY_ON=red`.
+| Event | Status | Fires when |
+|-------|--------|-----------|
+| `started` | — | A new Claude Code session registers for the first time |
+| `finished` | 🟢 green | Claude finished running |
+| `idle` | 🟡 yellow | Idle — waiting for your input |
+| `working` | 🟠 orange | Actively thinking or using tools |
+| `attention` | 🔴 red | Needs your approval or attention |
+
+All five are on by default. To only get alerts, set `NOTIFY_ON=attention`.
+To get notified when Claude is waiting for you: `NOTIFY_ON=idle,attention`.
 
 ### Example: Pushover → Apple Watch
 
@@ -218,7 +223,7 @@ Yellow ↔ orange transitions don't fire notifications (too noisy). If you only 
 environment:
   NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
   NOTIFY_FORMAT: "pushover"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
   NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
   NOTIFY_PUSHOVER_USER: "uXyZ99-your-user-key"
 ```
@@ -231,10 +236,8 @@ You'll get a tap on your wrist whenever Claude needs attention.
 environment:
   NOTIFY_WEBHOOK_URL: "https://your-org.webhook.office.com/webhookb2/..."
   NOTIFY_FORMAT: "teams"
-  NOTIFY_ON: "started,finished,red"
+  NOTIFY_ON: "started,finished,idle,working,attention"
 ```
-
-A card posts to the channel each time a session starts, finishes, or needs attention.
 
 ### Example: ntfy.sh (free, self-hostable)
 
@@ -242,7 +245,7 @@ A card posts to the channel each time a session starts, finishes, or needs atten
 environment:
   NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts"
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
 ```
 
 Then install the [ntfy iOS app](https://ntfy.sh) — notifications arrive on your Apple Watch too.

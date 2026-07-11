@@ -15,7 +15,7 @@ services:
       # ---- Webhook notifications (uncomment & configure) ----
       # NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
       # NOTIFY_FORMAT: "pushover"              # generic | pushover | teams | slack | discord
-      # NOTIFY_ON: "started,finished,red"      # which events fire a notification
+      # NOTIFY_ON: "started,finished,idle,working,attention"
       # NOTIFY_PUSHOVER_TOKEN: "your-app-token"
       # NOTIFY_PUSHOVER_USER: "your-user-key"
       # NOTIFY_HEADERS: "{\"Authorization\":\"Bearer xxx\"}"  # extra HTTP headers (JSON)

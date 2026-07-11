@@ -324,7 +324,7 @@ describe('notification integration', () => {
     )
   })
 
-  it('fires "red" event when a session transitions to red via POST', async () => {
+  it('fires "attention" event when a session transitions to red via POST', async () => {
     await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -338,8 +338,46 @@ describe('notification integration', () => {
     })
 
     expect(mockNotify).toHaveBeenCalledWith(
-      'red',
+      'attention',
       expect.objectContaining({ name: 'urgent', status: 'red' }),
+    )
+  })
+
+  it('fires "idle" event when a session transitions to yellow via POST', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'going-idle', name: 'waiting', status: 'orange' }),
+    })
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'going-idle', status: 'yellow' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'idle',
+      expect.objectContaining({ name: 'waiting', status: 'yellow' }),
+    )
+  })
+
+  it('fires "working" event when a session transitions to orange via POST', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'going-working', name: 'busy', status: 'yellow' }),
+    })
+
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'going-working', status: 'orange' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'working',
+      expect.objectContaining({ name: 'busy', status: 'orange' }),
     )
   })
 
@@ -380,23 +418,43 @@ describe('notification integration', () => {
     )
   })
 
-  it('fires "red" event on PATCH to red', async () => {
+  it('fires "attention" event on PATCH to red', async () => {
     await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 'patch-red', name: 'help', status: 'yellow' }),
+      body: JSON.stringify({ id: 'patch-attn', name: 'help', status: 'yellow' }),
     })
     mockNotify.mockClear()
 
-    await app.request('/api/sessions/patch-red', {
+    await app.request('/api/sessions/patch-attn', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'red', detail: 'needs approval' }),
     })
 
     expect(mockNotify).toHaveBeenCalledWith(
-      'red',
+      'attention',
       expect.objectContaining({ name: 'help', detail: 'needs approval' }),
+    )
+  })
+
+  it('fires "idle" event on PATCH to yellow', async () => {
+    await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'patch-idle', name: 'waiting', status: 'orange' }),
+    })
+    mockNotify.mockClear()
+
+    await app.request('/api/sessions/patch-idle', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'yellow' }),
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'idle',
+      expect.objectContaining({ name: 'waiting', status: 'yellow' }),
     )
   })
 

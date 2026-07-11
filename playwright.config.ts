@@ -28,7 +28,7 @@ export default defineConfig({
       // and the fire-and-forget handler swallows it.  This proves that
       // notification failures never affect API responses.
       NOTIFY_WEBHOOK_URL: 'http://127.0.0.1:19999/dead',
-      NOTIFY_ON: 'started,finished,red',
+      NOTIFY_ON: 'started,finished,idle,working,attention',
     },
   },
 })

@@ -4,7 +4,16 @@ import type { Session, SessionStatus } from './domain.js'
 // Types
 // ---------------------------------------------------------------------------
 
-export type NotifyEvent = 'started' | 'finished' | 'red'
+/** Events are named after what's happening, not colors.
+ *  `started` is the only non-status event — it fires once when a session
+ *  first registers.  The rest map directly to Claude Code session states:
+ *
+ *    finished  — green  (Claude finished running)
+ *    idle      — yellow (waiting for your input)
+ *    working   — orange (actively thinking or using tools)
+ *    attention — red    (needs your approval or attention)
+ */
+export type NotifyEvent = 'started' | 'finished' | 'idle' | 'working' | 'attention'
 
 export type NotifyFormat = 'generic' | 'pushover' | 'teams' | 'slack' | 'discord'
 
@@ -15,7 +24,7 @@ export type NotifyFormat = 'generic' | 'pushover' | 'teams' | 'slack' | 'discord
 const NOTIFY_WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL
 const NOTIFY_FORMAT = (process.env.NOTIFY_FORMAT ?? 'generic') as NotifyFormat
 const NOTIFY_ON = new Set<string>(
-  (process.env.NOTIFY_ON ?? 'started,finished,red')
+  (process.env.NOTIFY_ON ?? 'started,finished,idle,working,attention')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
@@ -41,11 +50,18 @@ const NOTIFY_HEADERS: Record<string, string> = parseHeaders(process.env.NOTIFY_H
 /** Whether a given event type should fire a notification. */
 export const shouldNotify = (event: NotifyEvent): boolean => NOTIFY_ON.has(event)
 
-/** Map a session status to its lifecycle event, if any. */
-export const eventForStatus = (status: SessionStatus): NotifyEvent | null => {
-  if (status === 'red') return 'red'
-  if (status === 'green') return 'finished'
-  return null
+/** Map a session status to its lifecycle event. */
+export const eventForStatus = (status: SessionStatus): NotifyEvent => {
+  switch (status) {
+    case 'green':
+      return 'finished'
+    case 'yellow':
+      return 'idle'
+    case 'orange':
+      return 'working'
+    case 'red':
+      return 'attention'
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -57,8 +73,12 @@ const statusLabel = (event: NotifyEvent): string => {
     case 'started':
       return 'Session started'
     case 'finished':
-      return 'Session finished'
-    case 'red':
+      return 'Claude finished'
+    case 'idle':
+      return 'Idle — waiting for input'
+    case 'working':
+      return 'Working'
+    case 'attention':
       return 'Needs attention'
   }
 }
@@ -99,57 +119,83 @@ const buildPushover = (event: NotifyEvent, session: Session): Payload => ({
     user: NOTIFY_PUSHOVER_USER,
     title: 'Claude Status Dashboard',
     message: formatMessage(event, session),
-    priority: event === 'red' ? 1 : 0,
+    priority: event === 'attention' ? 1 : 0,
   }),
   headers: { 'Content-Type': 'application/json', ...NOTIFY_HEADERS },
 })
 
-const buildTeams = (event: NotifyEvent, session: Session): Payload => {
-  const color = event === 'red' ? 'FF0000' : event === 'finished' ? '00AA00' : '0076D3'
-  return {
-    body: JSON.stringify({
-      '@type': 'MessageCard',
-      '@context': 'https://schema.org/extensions',
-      title: 'Claude Status Dashboard',
-      text: formatMessage(event, session),
-      themeColor: color,
-      sections: [
-        {
-          facts: [
-            { name: 'Session', value: session.name },
-            { name: 'Status', value: session.status },
-            { name: 'Detail', value: session.detail || '(none)' },
-          ],
-        },
-      ],
-    }),
-    headers: { 'Content-Type': 'application/json', ...NOTIFY_HEADERS },
+const teamsColor = (event: NotifyEvent): string => {
+  switch (event) {
+    case 'finished':
+      return '00AA00'
+    case 'idle':
+      return 'DDA000'
+    case 'working':
+      return 'E67E00'
+    case 'attention':
+      return 'FF0000'
+    default:
+      return '0076D3' // started
   }
 }
 
-const buildSlack = (event: NotifyEvent, session: Session): Payload => {
-  const icon = event === 'red' ? '🔴' : event === 'finished' ? '✅' : '🟢'
-  return {
-    body: JSON.stringify({
-      text: `Claude Status Dashboard — ${statusLabel(event)}`,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `${icon} *${statusLabel(event)}*\n> ${session.name}${session.detail ? ` — ${session.detail}` : ''}`,
-          },
-        },
-      ],
-    }),
-    headers: { 'Content-Type': 'application/json', ...NOTIFY_HEADERS },
+const buildTeams = (event: NotifyEvent, session: Session): Payload => ({
+  body: JSON.stringify({
+    '@type': 'MessageCard',
+    '@context': 'https://schema.org/extensions',
+    title: 'Claude Status Dashboard',
+    text: formatMessage(event, session),
+    themeColor: teamsColor(event),
+    sections: [
+      {
+        facts: [
+          { name: 'Session', value: session.name },
+          { name: 'Status', value: session.status },
+          { name: 'Detail', value: session.detail || '(none)' },
+        ],
+      },
+    ],
+  }),
+  headers: { 'Content-Type': 'application/json', ...NOTIFY_HEADERS },
+})
+
+const slackIcon = (event: NotifyEvent): string => {
+  switch (event) {
+    case 'finished':
+      return '✅'
+    case 'idle':
+      return '🟡'
+    case 'working':
+      return '🟠'
+    case 'attention':
+      return '🔴'
+    default:
+      return '🟢' // started
   }
 }
+
+const buildSlack = (event: NotifyEvent, session: Session): Payload => ({
+  body: JSON.stringify({
+    text: `Claude Status Dashboard — ${statusLabel(event)}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${slackIcon(event)} *${statusLabel(event)}*\n> ${session.name}${session.detail ? ` — ${session.detail}` : ''}`,
+        },
+      },
+    ],
+  }),
+  headers: { 'Content-Type': 'application/json', ...NOTIFY_HEADERS },
+})
 
 const discordColors: Record<NotifyEvent, number> = {
   started: 0x0076d3,
   finished: 0x00aa00,
-  red: 0xff0000,
+  idle: 0xdda000,
+  working: 0xe67e00,
+  attention: 0xff0000,
 }
 
 const buildDiscord = (event: NotifyEvent, session: Session): Payload => ({
