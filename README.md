@@ -85,12 +85,12 @@ Claude Code  →  hook script  →  POST /api/sessions  →  Dashboard
 
 ## Session Statuses
 
-| Color | Meaning |
-|:---:|:---|
-| 🟢 **Green** | Claude finished running |
-| 🟡 **Yellow** | Idle — waiting for your input |
-| 🟠 **Orange** | Actively thinking or using tools |
-| 🔴 **Red** | Paused — needs your approval or attention |
+| Color | Status | Event | Meaning |
+|:---:|:---|:---|:---|
+| 🟢 **Green** | `green` | `finished` | Claude finished running |
+| 🟡 **Yellow** | `yellow` | `idle` | Idle — waiting for your input |
+| 🟠 **Orange** | `orange` | `working` | Actively thinking or using tools |
+| 🔴 **Red** | `red` | `attention` | Paused — needs your approval or attention |
 
 ---
 
@@ -159,16 +159,23 @@ The hook auto-detects the ccusage project key by walking up to the nearest Git r
 
 ---
 
-## Red Alert Beeps
+## Beeps
 
-The browser emits a quiet beep when any card stays **red** longer than `RED_ALERT_AFTER_MS`.
+The dashboard can emit a quiet beep when session status changes occur. Click the **🔔** icon in the top bar to open the beep settings panel and choose which events trigger a beep:
+
+- **started** — a new session registers
+- **finished** — Claude finishes running
+- **idle** — waiting for your input
+- **working** — actively thinking or using tools
+- **attention** — needs your approval (red card)
 
 Browsers require a user gesture before audio plays — click **Enable beeps** after opening the page.
 
-The page also stores these controls in the browser:
+The settings panel also includes:
+- **Alert after** — seconds a card must stay in the selected status before beeping
+- **Max beeps** — number of beeps before stopping (blank = no limit)
 
-- **Start after** — seconds a card must stay red before beeping
-- **Stop after** — number of beeps before stopping (blank = no limit)
+Settings are persisted on the server and restore on page reload.
 
 ---
 
@@ -213,9 +220,11 @@ which read from `.env`):
 |-------|-----------|
 | `started` | A new Claude Code session registers for the first time |
 | `finished` | A session transitions to green (Claude finished running) |
-| `red` | A session transitions to red (needs your approval or attention) |
+| `idle` | A session transitions to yellow (waiting for your input) |
+| `working` | A session transitions to orange (actively thinking or using tools) |
+| `attention` | A session transitions to red (needs your approval or attention) |
 
-Yellow ↔ orange transitions don't fire notifications (too noisy). If you only want alerts and nothing else, set `NOTIFY_ON=red`.
+If you only want alerts and nothing else, set `NOTIFY_ON=attention`.
 
 ### Example: Pushover → Apple Watch
 
@@ -223,7 +232,7 @@ Yellow ↔ orange transitions don't fire notifications (too noisy). If you only 
 environment:
   NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
   NOTIFY_FORMAT: "pushover"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
   NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
   NOTIFY_PUSHOVER_USER: "uXyZ99-your-user-key"
 ```
@@ -236,7 +245,7 @@ You'll get a tap on your wrist whenever Claude needs attention.
 environment:
   NOTIFY_WEBHOOK_URL: "https://your-org.webhook.office.com/webhookb2/..."
   NOTIFY_FORMAT: "teams"
-  NOTIFY_ON: "started,finished,red"
+  NOTIFY_ON: "started,finished,attention"
 ```
 
 A card posts to the channel each time a session starts, finishes, or needs attention.
@@ -247,7 +256,7 @@ A card posts to the channel each time a session starts, finishes, or needs atten
 environment:
   NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts"
   NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "red"
+  NOTIFY_ON: "attention"
 ```
 
 Then install the [ntfy iOS app](https://ntfy.sh) — notifications arrive on your Apple Watch too.
