@@ -1139,11 +1139,8 @@ h1 {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 460px;
+  width: 440px;
   max-width: calc(100vw - 32px);
-  max-height: 85vh;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 12px;

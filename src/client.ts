@@ -1046,26 +1046,25 @@ const buildNotifyPanel = (s: NotifySettingsUI): HTMLElement =>
         ),
       ]),
     ]),
-    // Pushover row
-    createElement('div', { class: 'notify-panel__row' }, [
-      createElement('div', { class: 'notify-panel__field' }, [
-        createElement('label', { for: 'notify-pushover-token' }, ['Pushover token']),
-        createElement('input', {
-          id: 'notify-pushover-token',
-          type: 'password',
-          placeholder: s.pushoverToken || '(not set)',
-          disabled: s.enabled ? undefined : 'true',
-        }),
-      ]),
-      createElement('div', { class: 'notify-panel__field' }, [
-        createElement('label', { for: 'notify-pushover-user' }, ['Pushover user key']),
-        createElement('input', {
-          id: 'notify-pushover-user',
-          type: 'password',
-          placeholder: s.pushoverUser || '(not set)',
-          disabled: s.enabled ? undefined : 'true',
-        }),
-      ]),
+    // Pushover API token
+    createElement('div', { class: 'notify-panel__field' }, [
+      createElement('label', { for: 'notify-pushover-token' }, ['Pushover API token']),
+      createElement('input', {
+        id: 'notify-pushover-token',
+        type: 'password',
+        placeholder: s.pushoverToken || '(not set)',
+        disabled: s.enabled ? undefined : 'true',
+      }),
+    ]),
+    // Pushover user key
+    createElement('div', { class: 'notify-panel__field' }, [
+      createElement('label', { for: 'notify-pushover-user' }, ['Pushover user key']),
+      createElement('input', {
+        id: 'notify-pushover-user',
+        type: 'password',
+        placeholder: s.pushoverUser || '(not set)',
+        disabled: s.enabled ? undefined : 'true',
+      }),
     ]),
     // Custom headers
     createElement('div', { class: 'notify-panel__field' }, [
