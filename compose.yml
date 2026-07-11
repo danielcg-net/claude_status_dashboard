@@ -16,7 +16,7 @@ services:
       NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
       NOTIFY_FORMAT: "pushover"
       NOTIFY_ON: "idle"                        # ping when Claude is waiting for input
-      NOTIFY_PUSHOVER_TOKEN: "your-app-token"  # create at https://pushover.net/apps/build
+      NOTIFY_PUSHOVER_TOKEN: "your-app-token"  # register an Application at https://pushover.net/apps/build
       NOTIFY_PUSHOVER_USER: "your-user-key"
       # NOTIFY_HEADERS: "{\"Authorization\":\"Bearer xxx\"}"  # extra HTTP headers (JSON)
     volumes:
