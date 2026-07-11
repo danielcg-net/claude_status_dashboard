@@ -54,6 +54,10 @@ HTTP API and a native iOS app.
 [Pushover](https://pushover.net) is a dedicated push notification service with
 a native Apple Watch app. **$5 one-time purchase** (no subscription).
 
+The dashboard acts as a Pushover *client* — it POSTs to Pushover's API, and
+Pushover pushes the notification to your devices. You don't create a "webhook"
+on Pushover's side; you register an **Application** to get an API token.
+
 **Setup (5 minutes):**
 
 1. Buy Pushover at [pushover.net](https://pushover.net) (or try the 7-day free
@@ -61,10 +65,10 @@ a native Apple Watch app. **$5 one-time purchase** (no subscription).
 2. Install the [Pushover iOS app](https://apps.apple.com/us/app/pushover-notifications/id506088175).
    Notifications will automatically appear on your Apple Watch — no extra setup.
 3. Log in at [pushover.net](https://pushover.net) and copy your **User Key**
-   (a 30-char string like `ucj2wjj4pz63ogxf1yb4fvw9ff7mhb`).
-4. Go to [pushover.net/apps/build](https://pushover.net/apps/build), give your
-   app a name (e.g. "Claude Dashboard"), and copy the **API Token/Key**
-   (a 30-char string like `a1b2c3...`).
+   (shown on the dashboard after login, a 30-char string).
+4. Go to [pushover.net/apps/build](https://pushover.net/apps/build) →
+   **Register an Application** (not a webhook). Give it a name (e.g. "Claude
+   Dashboard") and copy the **API Token/Key** (30 chars).
 
 **compose.yml:**
 
