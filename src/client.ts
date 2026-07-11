@@ -1610,7 +1610,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
         createElement('strong', {}, [String(state.sessions.filter((session) => {
           if (session.status !== status) return false
           if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-          if (state.excludedStates.size > 0 && state.excludedStates.has(session.status)) return false
+          if (state.excludedStates.size > 0 && isSessionStateExcluded(session)) return false
           if (state.selectedRepo) {
             const project = findUsageProject(session, state.usage)
             return project?.project === state.selectedRepo
