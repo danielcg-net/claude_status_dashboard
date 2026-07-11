@@ -49,20 +49,24 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('eventForStatus', () => {
-  it('maps red status to "red" event', async () => {
-    const { eventForStatus } = await importNotify()
-    expect(eventForStatus('red')).toBe('red')
-  })
-
-  it('maps green status to "finished" event', async () => {
+  it('maps green to "finished"', async () => {
     const { eventForStatus } = await importNotify()
     expect(eventForStatus('green')).toBe('finished')
   })
 
-  it('returns null for yellow and orange', async () => {
+  it('maps yellow to "idle"', async () => {
     const { eventForStatus } = await importNotify()
-    expect(eventForStatus('yellow')).toBeNull()
-    expect(eventForStatus('orange')).toBeNull()
+    expect(eventForStatus('yellow')).toBe('idle')
+  })
+
+  it('maps orange to "working"', async () => {
+    const { eventForStatus } = await importNotify()
+    expect(eventForStatus('orange')).toBe('working')
+  })
+
+  it('maps red to "attention"', async () => {
+    const { eventForStatus } = await importNotify()
+    expect(eventForStatus('red')).toBe('attention')
   })
 })
 
@@ -72,8 +76,8 @@ describe('eventForStatus', () => {
 
 describe('shouldNotify', () => {
   it('returns true when event is in NOTIFY_ON', async () => {
-    const { shouldNotify } = await importNotify({ NOTIFY_ON: 'red,started' })
-    expect(shouldNotify('red')).toBe(true)
+    const { shouldNotify } = await importNotify({ NOTIFY_ON: 'attention,started' })
+    expect(shouldNotify('attention')).toBe(true)
     expect(shouldNotify('started')).toBe(true)
     expect(shouldNotify('finished')).toBe(false)
   })
@@ -82,14 +86,16 @@ describe('shouldNotify', () => {
     const { shouldNotify } = await importNotify({})
     expect(shouldNotify('started')).toBe(true)
     expect(shouldNotify('finished')).toBe(true)
-    expect(shouldNotify('red')).toBe(true)
+    expect(shouldNotify('idle')).toBe(true)
+    expect(shouldNotify('working')).toBe(true)
+    expect(shouldNotify('attention')).toBe(true)
   })
 
   it('returns false for all when NOTIFY_ON is empty', async () => {
     const { shouldNotify } = await importNotify({ NOTIFY_ON: '' })
-    expect(shouldNotify('red')).toBe(false)
+    expect(shouldNotify('attention')).toBe(false)
     expect(shouldNotify('started')).toBe(false)
-    expect(shouldNotify('finished')).toBe(false)
+    expect(shouldNotify('idle')).toBe(false)
   })
 })
 
@@ -101,10 +107,10 @@ describe('_buildPayload', () => {
   it('generic format includes full session data', async () => {
     const { _buildPayload } = await importNotify()
     const session = makeSession({ detail: 'doing work' })
-    const { body, headers } = _buildPayload('generic', 'started', session)
+    const { body, headers } = _buildPayload('generic', 'working', session)
 
     const parsed = JSON.parse(body)
-    expect(parsed.event).toBe('started')
+    expect(parsed.event).toBe('working')
     expect(parsed.timestamp).toBeDefined()
     expect(parsed.session.id).toBe('test-1')
     expect(parsed.session.name).toBe('my-project')
@@ -120,7 +126,7 @@ describe('_buildPayload', () => {
       NOTIFY_PUSHOVER_USER: 'user-xyz',
     })
     const session = makeSession({ detail: 'needs approval' })
-    const { body, headers } = _buildPayload('pushover', 'red', session)
+    const { body } = _buildPayload('pushover', 'attention', session)
 
     const parsed = JSON.parse(body)
     expect(parsed.token).toBe('tok-abc')
@@ -128,40 +134,42 @@ describe('_buildPayload', () => {
     expect(parsed.title).toBe('Claude Status Dashboard')
     expect(parsed.message).toContain('Needs attention')
     expect(parsed.message).toContain('needs approval')
-    expect(parsed.priority).toBe(1) // red = high priority
+    expect(parsed.priority).toBe(1) // attention = high priority
   })
 
-  it('pushover uses priority 0 for non-red events', async () => {
+  it('pushover uses priority 0 for non-attention events', async () => {
     const { _buildPayload } = await importNotify({
       NOTIFY_PUSHOVER_TOKEN: 'tok',
       NOTIFY_PUSHOVER_USER: 'user',
     })
-    const { body } = _buildPayload('pushover', 'finished', makeSession())
-    expect(JSON.parse(body).priority).toBe(0)
+    expect(JSON.parse(_buildPayload('pushover', 'finished', makeSession()).body).priority).toBe(0)
+    expect(JSON.parse(_buildPayload('pushover', 'idle', makeSession()).body).priority).toBe(0)
   })
 
   it('teams format produces a MessageCard', async () => {
     const { _buildPayload } = await importNotify()
-    const { body } = _buildPayload('teams', 'red', makeSession({ detail: 'waiting' }))
+    const { body } = _buildPayload('teams', 'attention', makeSession({ detail: 'waiting' }))
 
     const parsed = JSON.parse(body)
     expect(parsed['@type']).toBe('MessageCard')
     expect(parsed['@context']).toBe('https://schema.org/extensions')
     expect(parsed.title).toBe('Claude Status Dashboard')
-    expect(parsed.themeColor).toBe('FF0000') // red
+    expect(parsed.themeColor).toBe('FF0000')
     expect(parsed.text).toContain('waiting')
     expect(parsed.sections[0].facts).toHaveLength(3)
   })
 
-  it('teams uses green color for finished events', async () => {
+  it('teams uses per-event theme colors', async () => {
     const { _buildPayload } = await importNotify()
-    const { body } = _buildPayload('teams', 'finished', makeSession())
-    expect(JSON.parse(body).themeColor).toBe('00AA00')
+    expect(JSON.parse(_buildPayload('teams', 'finished', makeSession()).body).themeColor).toBe('00AA00')
+    expect(JSON.parse(_buildPayload('teams', 'idle', makeSession()).body).themeColor).toBe('DDA000')
+    expect(JSON.parse(_buildPayload('teams', 'working', makeSession()).body).themeColor).toBe('E67E00')
+    expect(JSON.parse(_buildPayload('teams', 'attention', makeSession()).body).themeColor).toBe('FF0000')
   })
 
   it('slack format includes mrkdwn blocks', async () => {
     const { _buildPayload } = await importNotify()
-    const { body } = _buildPayload('slack', 'red', makeSession({ detail: 'approval needed' }))
+    const { body } = _buildPayload('slack', 'attention', makeSession({ detail: 'approval needed' }))
 
     const parsed = JSON.parse(body)
     expect(parsed.blocks[0].type).toBe('section')
@@ -173,7 +181,7 @@ describe('_buildPayload', () => {
 
   it('discord format includes embed with color', async () => {
     const { _buildPayload } = await importNotify()
-    const { body } = _buildPayload('discord', 'red', makeSession())
+    const { body } = _buildPayload('discord', 'attention', makeSession())
 
     const parsed = JSON.parse(body)
     expect(parsed.content).toBeNull()
@@ -186,7 +194,9 @@ describe('_buildPayload', () => {
     const { _buildPayload } = await importNotify()
     expect(JSON.parse(_buildPayload('discord', 'started', makeSession()).body).embeds[0].color).toBe(0x0076d3)
     expect(JSON.parse(_buildPayload('discord', 'finished', makeSession()).body).embeds[0].color).toBe(0x00aa00)
-    expect(JSON.parse(_buildPayload('discord', 'red', makeSession()).body).embeds[0].color).toBe(0xff0000)
+    expect(JSON.parse(_buildPayload('discord', 'idle', makeSession()).body).embeds[0].color).toBe(0xdda000)
+    expect(JSON.parse(_buildPayload('discord', 'working', makeSession()).body).embeds[0].color).toBe(0xe67e00)
+    expect(JSON.parse(_buildPayload('discord', 'attention', makeSession()).body).embeds[0].color).toBe(0xff0000)
   })
 
   it('includes extra headers from NOTIFY_HEADERS', async () => {
@@ -216,7 +226,7 @@ describe('_buildPayload', () => {
 describe('notify', () => {
   it('is a no-op when NOTIFY_WEBHOOK_URL is not set', async () => {
     const { notify } = await importNotify({})
-    notify('red', makeSession())
+    notify('attention', makeSession())
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
@@ -225,43 +235,43 @@ describe('notify', () => {
       NOTIFY_WEBHOOK_URL: 'https://example.com/webhook',
       NOTIFY_ON: 'started',
     })
-    notify('finished', makeSession())
+    notify('idle', makeSession())
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('posts to the webhook URL for matching events', async () => {
     const { notify } = await importNotify({
       NOTIFY_WEBHOOK_URL: 'https://hooks.example.com/push',
-      NOTIFY_ON: 'red',
+      NOTIFY_ON: 'attention',
     })
-    notify('red', makeSession({ detail: 'test alert' }))
+    notify('attention', makeSession({ detail: 'test alert' }))
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const [url, init] = mockFetch.mock.calls[0]
     expect(url).toBe('https://hooks.example.com/push')
     expect(init.method).toBe('POST')
     expect(init.headers['Content-Type']).toBe('application/json')
-    expect(JSON.parse(init.body).event).toBe('red')
+    expect(JSON.parse(init.body).event).toBe('attention')
   })
 
   it('does not throw when fetch rejects', async () => {
     mockFetch.mockRejectedValueOnce(new Error('network down'))
     const { notify } = await importNotify({
       NOTIFY_WEBHOOK_URL: 'https://hooks.example.com/push',
-      NOTIFY_ON: 'red',
+      NOTIFY_ON: 'attention',
     })
     // Must not throw.
-    expect(() => notify('red', makeSession())).not.toThrow()
+    expect(() => notify('attention', makeSession())).not.toThrow()
   })
 
   it('does not throw with an unknown NOTIFY_FORMAT', async () => {
     const { notify } = await importNotify({
       NOTIFY_WEBHOOK_URL: 'https://hooks.example.com/push',
-      NOTIFY_ON: 'red',
+      NOTIFY_ON: 'attention',
       NOTIFY_FORMAT: 'invalid-format',
     })
     // Must silently skip — no fetch, no throw.
-    expect(() => notify('red', makeSession())).not.toThrow()
+    expect(() => notify('attention', makeSession())).not.toThrow()
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })
