@@ -82,17 +82,26 @@ type AppState = ApiState & {
 }
 
 const statusLabels: Record<SessionStatus, string> = {
-  green: 'Finished',
-  yellow: 'Idle',
-  orange: 'Running',
-  red: 'Waiting',
+  finished: 'Finished',
+  idle: 'Idle',
+  working: 'Running',
+  attention: 'Waiting',
 }
 
 const statusDetails: Record<SessionStatus, string> = {
-  green: 'Claude has finished running something.',
-  yellow: 'Claude is idle at the prompt, waiting for your input.',
-  orange: 'Claude is thinking and doing stuff.',
-  red: 'Claude is paused for an approval or decision.',
+  finished: 'Claude has finished running something.',
+  idle: 'Claude is idle at the prompt, waiting for your input.',
+  working: 'Claude is thinking and doing stuff.',
+  attention: 'Claude is paused for an approval or decision.',
+}
+
+/** Map semantic status → CSS color name (e.g. 'finished' → 'green').
+ *  CSS classes remain color-based; this bridges the two naming schemes. */
+const statusToColor: Record<SessionStatus, string> = {
+  finished: 'green',
+  idle: 'yellow',
+  working: 'orange',
+  attention: 'red',
 }
 
 const root = document.querySelector<HTMLDivElement>('#app')
@@ -122,17 +131,30 @@ const saveExcludedRepos = (excluded: ReadonlySet<string>): void => {
   }
 }
 
+const EXCLUDED_STATES_LEGACY_MAP: Record<string, SessionStatus> = {
+  green: 'finished',
+  yellow: 'idle',
+  orange: 'working',
+  red: 'attention',
+}
+
 const loadExcludedStates = (): ReadonlySet<SessionStatus> => {
   try {
     const raw = localStorage.getItem('excludedStates')
     if (raw === null) return new Set<SessionStatus>()
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return new Set<SessionStatus>()
-    return new Set<SessionStatus>(
-      parsed.filter((item): item is SessionStatus =>
-        typeof item === 'string' && ['green', 'yellow', 'orange', 'red'].includes(item),
-      ),
-    )
+    const migrated = parsed
+      .map((item: string) => EXCLUDED_STATES_LEGACY_MAP[item] ?? item)
+      .filter((item): item is SessionStatus =>
+        typeof item === 'string' && ['finished', 'idle', 'working', 'attention'].includes(item),
+      )
+    const result = new Set<SessionStatus>(migrated)
+    // Persist migrated values so subsequent reads don't re-migrate
+    if (migrated.length > 0) {
+      try { localStorage.setItem('excludedStates', JSON.stringify([...result])) } catch { /* ignore */ }
+    }
+    return result
   } catch (error) {
     console.warn('Could not load excluded states from localStorage:', error)
     return new Set<SessionStatus>()
@@ -224,7 +246,7 @@ const formatLocalTime = (isoDate: string): string | null => {
 
 const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
   appState.sessions.filter((session) => {
-    if (session.status !== 'red') return false
+    if (session.status !== 'attention') return false
     const ms = millisecondsSince(session.statusSince)
     return ms !== null && ms >= redAlertAfterMs(appState)
   })
@@ -271,8 +293,7 @@ const handleAlertState = (appState: AppState): AppState => {
 
   // Detect sessions whose status maps to a selected event
   const matchingSessions = appState.sessions.filter((session) => {
-    const event = statusToEvent[session.status]
-    if (!events.includes(event)) return false
+    if (!events.includes(session.status)) return false
     const ms = millisecondsSince(session.statusSince)
     return ms !== null && ms >= thresholdMs
   })
@@ -356,13 +377,6 @@ const notifyFormatOptions = ['generic', 'pushover', 'teams', 'slack', 'discord']
 const notifyEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
 
 const beepEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
-
-const statusToEvent: Record<SessionStatus, string> = {
-  green: 'finished',
-  yellow: 'idle',
-  orange: 'working',
-  red: 'attention',
-}
 
 const booleanAttrs = new Set(['checked', 'disabled', 'selected', 'readonly', 'multiple', 'hidden'])
 
@@ -635,10 +649,10 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
 
 const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
-  const overdue = session.status === 'red' && ageMs !== null && ageMs >= state.redAlertAfterMs
+  const overdue = session.status === 'attention' && ageMs !== null && ageMs >= state.redAlertAfterMs
   const usageProject = findUsageProject(session, state.usage)
   const card = createElement('article', {
-    class: `session-card session-card--${session.status}${overdue ? ' session-card--overdue' : ''}`,
+    class: `session-card session-card--${statusToColor[session.status]}${overdue ? ' session-card--overdue' : ''}`,
   })
 
   card.append(
@@ -953,7 +967,7 @@ const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => 
 const renderExcludedStatesSection = (): HTMLElement | null => {
   if (state.excludedStates.size === 0) return null
 
-  const sortedStates = (['green', 'yellow', 'orange', 'red'] as const)
+  const sortedStates = (['finished', 'idle', 'working', 'attention'] as const)
     .filter((s) => state.excludedStates.has(s))
 
   return createElement('details', { class: 'excluded-details excluded-details--states' }, [
@@ -1604,8 +1618,8 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
     createElement('p', {}, ['ccusage data is not available.']),
   ]),
   createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
-    ...(['green', 'yellow', 'orange', 'red'] as const).map((status) =>
-      createElement('div', { class: `summary__item summary__item--${status}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
+    ...(['finished', 'idle', 'working', 'attention'] as const).map((status) =>
+      createElement('div', { class: `summary__item summary__item--${statusToColor[status]}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
         createElement('span', {}, [statusLabels[status], state.excludedStates.has(status) ? ' (hidden)' : '']),
         createElement('strong', {}, [String(state.sessions.filter((session) => {
           if (session.status !== status) return false
@@ -1729,7 +1743,7 @@ const attachBodyEvents = (): void => {
     button.addEventListener('click', (event) => {
       event.stopPropagation()
       const status = button.dataset.excludeState as SessionStatus | undefined
-      if (!status || !['green', 'yellow', 'orange', 'red'].includes(status)) return
+      if (!status || !['finished', 'idle', 'working', 'attention'].includes(status)) return
       const next = new Set(state.excludedStates)
       if (next.has(status)) {
         next.delete(status)

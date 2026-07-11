@@ -15,7 +15,7 @@ test.describe('Claude Status Dashboard', () => {
 
   test('creates a session via API and it appears', async ({ page, request }) => {
     const { session } = await (await request.post('/api/sessions', {
-      data: { name: 'e2e-test-session', status: 'orange' },
+      data: { name: 'e2e-test-session', status: 'working' },
     })).json()
 
     // Reload and verify

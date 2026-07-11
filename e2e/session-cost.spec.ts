@@ -74,7 +74,7 @@ test.describe('session card cost display', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-cost-test', usageProject: PROJECT_KEY, status: 'green' },
+        data: { name: 'e2e-cost-test', usageProject: PROJECT_KEY, status: 'finished' },
       })
     ).json()
 
@@ -98,7 +98,7 @@ test.describe('session card cost display', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-no-usage', usageProject: '-Users-nonexistent-project', status: 'green' },
+        data: { name: 'e2e-no-usage', usageProject: '-Users-nonexistent-project', status: 'finished' },
       })
     ).json()
 
@@ -133,7 +133,7 @@ test.describe('cost window filter (Costs by repo)', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-filter-test', usageProject: PROJECT_KEY, status: 'green' },
+        data: { name: 'e2e-filter-test', usageProject: PROJECT_KEY, status: 'finished' },
       })
     ).json()
 
@@ -165,7 +165,7 @@ test.describe('cost window filter (Costs by repo)', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-2days-test', usageProject: PROJECT_KEY, status: 'green' },
+        data: { name: 'e2e-2days-test', usageProject: PROJECT_KEY, status: 'finished' },
       })
     ).json()
 
@@ -193,7 +193,7 @@ test.describe('session status lifecycle', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-lifecycle', status: 'orange', detail: 'Starting up' },
+        data: { name: 'e2e-lifecycle', status: 'working', detail: 'Starting up' },
       })
     ).json()
 
@@ -203,7 +203,7 @@ test.describe('session status lifecycle', () => {
 
     // Patch to green
     await request.patch(`/api/sessions/${session.id}`, {
-      data: { status: 'green', detail: 'All done' },
+      data: { status: 'finished', detail: 'All done' },
     })
 
     // Still only one card — PATCH updates, not creates
@@ -221,7 +221,7 @@ test.describe('session status lifecycle', () => {
 
     const { session } = await (
       await request.post('/api/sessions', {
-        data: { name: 'e2e-delete-me', status: 'green' },
+        data: { name: 'e2e-delete-me', status: 'finished' },
       })
     ).json()
 

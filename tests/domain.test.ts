@@ -23,7 +23,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   id: 'test-session',
   name: 'Test Session',
   usageProject: null,
-  status: 'orange',
+  status: 'working',
   detail: '',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -38,7 +38,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
 describe('registerSessionSchema', () => {
   it('accepts a minimal payload', () => {
     const result = registerSessionSchema.parse({})
-    expect(result.status).toBe('orange')
+    expect(result.status).toBe('working')
     expect(result.id).toBeUndefined()
     expect(result.name).toBeUndefined()
   })
@@ -48,13 +48,13 @@ describe('registerSessionSchema', () => {
       id: 'my-session',
       name: 'My Session',
       usageProject: 'my-project',
-      status: 'green',
+      status: 'finished',
       detail: 'All good',
     })
     expect(result.id).toBe('my-session')
     expect(result.name).toBe('My Session')
     expect(result.usageProject).toBe('my-project')
-    expect(result.status).toBe('green')
+    expect(result.status).toBe('finished')
     expect(result.detail).toBe('All good')
   })
 
@@ -96,11 +96,11 @@ describe('updateSessionSchema', () => {
 
   it('accepts a valid status with optional fields', () => {
     const result = updateSessionSchema.parse({
-      status: 'red',
+      status: 'attention',
       usageProject: 'other-project',
       detail: 'Blocked',
     })
-    expect(result.status).toBe('red')
+    expect(result.status).toBe('attention')
     expect(result.usageProject).toBe('other-project')
     expect(result.detail).toBe('Blocked')
   })
@@ -116,10 +116,10 @@ describe('updateSessionSchema', () => {
 
 describe('registerSession', () => {
   it('creates a new session with defaults', () => {
-    const [store, session] = registerSession(emptyStore(), { status: 'orange' })
+    const [store, session] = registerSession(emptyStore(), { status: 'working' })
     expect(session.id).toMatch(/^session-/)
     expect(session.name).toBe(session.id)
-    expect(session.status).toBe('orange')
+    expect(session.status).toBe('working')
     expect(session.detail).toBe('')
     expect(session.usageProject).toBeNull()
     expect(session.createdAt).toBe(session.updatedAt)
@@ -152,21 +152,21 @@ describe('registerSession', () => {
   })
 
   it('stores the provided status', () => {
-    const [, session] = registerSession(emptyStore(), { status: 'red' })
-    expect(session.status).toBe('red')
+    const [, session] = registerSession(emptyStore(), { status: 'attention' })
+    expect(session.status).toBe('attention')
   })
 
   it('updates an existing session preserving createdAt', () => {
     const [store, first] = registerSession(emptyStore(), {
       id: 'same-id',
       name: 'First',
-      status: 'orange',
+      status: 'working',
     })
 
     const [, second] = registerSession(store, {
       id: 'same-id',
       name: 'Second',
-      status: 'green',
+      status: 'finished',
     })
 
     expect(second.id).toBe('same-id')
@@ -180,7 +180,7 @@ describe('registerSession', () => {
       id: 'same-id',
       name: 'Original',
     })
-    const [, updated] = registerSession(store, { id: 'same-id', status: 'green' })
+    const [, updated] = registerSession(store, { id: 'same-id', status: 'finished' })
     expect(updated.name).toBe('Original')
   })
 
@@ -189,7 +189,7 @@ describe('registerSession', () => {
       id: 'same-id',
       usageProject: 'original-project',
     })
-    const [, updated] = registerSession(store, { id: 'same-id', status: 'green' })
+    const [, updated] = registerSession(store, { id: 'same-id', status: 'finished' })
     expect(updated.usageProject).toBe('original-project')
   })
 
@@ -198,16 +198,16 @@ describe('registerSession', () => {
       id: 'same-id',
       detail: 'Original detail',
     })
-    const [, updated] = registerSession(store, { id: 'same-id', status: 'green' })
+    const [, updated] = registerSession(store, { id: 'same-id', status: 'finished' })
     expect(updated.detail).toBe('Original detail')
   })
 
   it('updates statusSince when status changes', () => {
     const [store, first] = registerSession(emptyStore(), {
       id: 'same-id',
-      status: 'orange',
+      status: 'working',
     })
-    const [, second] = registerSession(store, { id: 'same-id', status: 'green' })
+    const [, second] = registerSession(store, { id: 'same-id', status: 'finished' })
     // Should be >= because both calls may happen in the same ms
     expect(second.statusSince.localeCompare(first.statusSince)).toBeGreaterThanOrEqual(0)
   })
@@ -215,9 +215,9 @@ describe('registerSession', () => {
   it('keeps statusSince when status does not change', () => {
     const [store, first] = registerSession(emptyStore(), {
       id: 'same-id',
-      status: 'orange',
+      status: 'working',
     })
-    const [, second] = registerSession(store, { id: 'same-id', status: 'orange' })
+    const [, second] = registerSession(store, { id: 'same-id', status: 'working' })
     expect(second.statusSince).toBe(first.statusSince)
   })
 
@@ -253,7 +253,7 @@ describe('registerSession', () => {
 describe('updateSession', () => {
   it('returns undefined when session does not exist', () => {
     const [store, session] = updateSession(emptyStore(), 'nonexistent', {
-      status: 'green',
+      status: 'finished',
     })
     expect(session).toBeUndefined()
     expect(store.size).toBe(0)
@@ -262,24 +262,24 @@ describe('updateSession', () => {
   it('updates status on an existing session', () => {
     const existing = makeSession()
     const [store, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'red',
+      status: 'attention',
     })
-    expect(updated?.status).toBe('red')
+    expect(updated?.status).toBe('attention')
     expect(updated?.id).toBe('test-session')
   })
 
   it('updates statusSince when status changes', () => {
     const existing = makeSession()
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'red',
+      status: 'attention',
     })
     expect(updated?.statusSince).not.toBe(existing.statusSince)
   })
 
   it('keeps statusSince when status does not change', () => {
-    const existing = makeSession({ status: 'red' })
+    const existing = makeSession({ status: 'attention' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'red',
+      status: 'attention',
     })
     expect(updated?.statusSince).toBe(existing.statusSince)
   })
@@ -287,7 +287,7 @@ describe('updateSession', () => {
   it('updates usageProject when provided', () => {
     const existing = makeSession({ usageProject: 'old' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
       usageProject: 'new',
     })
     expect(updated?.usageProject).toBe('new')
@@ -296,7 +296,7 @@ describe('updateSession', () => {
   it('preserves usageProject when not provided', () => {
     const existing = makeSession({ usageProject: 'existing' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
     })
     expect(updated?.usageProject).toBe('existing')
   })
@@ -304,7 +304,7 @@ describe('updateSession', () => {
   it('updates detail when provided', () => {
     const existing = makeSession({ detail: 'old' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
       detail: 'new',
     })
     expect(updated?.detail).toBe('new')
@@ -313,7 +313,7 @@ describe('updateSession', () => {
   it('preserves detail when not provided', () => {
     const existing = makeSession({ detail: 'existing' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
     })
     expect(updated?.detail).toBe('existing')
   })
@@ -321,7 +321,7 @@ describe('updateSession', () => {
   it('updates updatedAt timestamp', () => {
     const existing = makeSession()
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
     })
     expect(updated?.updatedAt).not.toBe(existing.updatedAt)
   })
@@ -329,7 +329,7 @@ describe('updateSession', () => {
   it('preserves createdAt', () => {
     const existing = makeSession()
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
     })
     expect(updated?.createdAt).toBe(existing.createdAt)
   })
@@ -337,7 +337,7 @@ describe('updateSession', () => {
   it('preserves name', () => {
     const existing = makeSession({ name: 'Original Name' })
     const [, updated] = updateSession(storeWith(existing), 'test-session', {
-      status: 'green',
+      status: 'finished',
     })
     expect(updated?.name).toBe('Original Name')
   })

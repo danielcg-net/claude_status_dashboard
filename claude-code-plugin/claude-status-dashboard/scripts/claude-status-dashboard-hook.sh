@@ -50,11 +50,11 @@ const detailFor = () => {
 }
 
 const statusFor = () => {
-  if (event === 'Notification' || event === 'PermissionRequest' || event === 'Elicitation') return 'red'
-  if (event === 'Stop' || event === 'SubagentStop') return 'green'
-  if (event === 'StopFailure') return 'red'
-  if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'yellow'
-  return 'orange'
+  if (event === 'Notification' || event === 'PermissionRequest' || event === 'Elicitation') return 'attention'
+  if (event === 'Stop' || event === 'SubagentStop') return 'finished'
+  if (event === 'StopFailure') return 'attention'
+  if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'idle'
+  return 'working'
 }
 
 const payload = {

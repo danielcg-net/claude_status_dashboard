@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const sessionStatuses = ['green', 'yellow', 'orange', 'red'] as const
+export const sessionStatuses = ['finished', 'idle', 'working', 'attention'] as const
 
 export const sessionStatusSchema = z.enum(sessionStatuses)
 
@@ -8,7 +8,7 @@ export const registerSessionSchema = z.object({
   id: z.string().trim().min(1).max(120).optional(),
   name: z.string().trim().min(1).max(160).optional(),
   usageProject: z.string().trim().min(1).max(260).optional(),
-  status: sessionStatusSchema.default('orange'),
+  status: sessionStatusSchema.default('working'),
   detail: z.string().trim().max(500).optional(),
 })
 
@@ -19,6 +19,27 @@ export const updateSessionSchema = z.object({
 })
 
 export type SessionStatus = (typeof sessionStatuses)[number]
+
+/** Map a semantic session status to its display color (for CSS classes, status dots, etc.). */
+export const statusToColor: Record<SessionStatus, string> = {
+  finished: 'green',
+  idle: 'yellow',
+  working: 'orange',
+  attention: 'red',
+}
+
+/** Map legacy color names to semantic statuses for backward compatibility with
+ *  persisted data and localStorage written by previous versions. */
+const LEGACY_COLOR_TO_STATUS: Record<string, SessionStatus> = {
+  green: 'finished',
+  yellow: 'idle',
+  orange: 'working',
+  red: 'attention',
+}
+
+/** Normalize a status value that might be a legacy color name to its semantic equivalent. */
+export const migrateStatus = (value: string): SessionStatus =>
+  LEGACY_COLOR_TO_STATUS[value] ?? (value as SessionStatus)
 
 export type Session = {
   readonly id: string

@@ -28,7 +28,7 @@ const session = (overrides: Partial<Session> = {}): Session => ({
   name: 'test',
   createdAt: '2026-07-10T04:00:00.000Z',
   updatedAt: '2026-07-10T05:00:00.000Z',
-  status: 'green',
+  status: 'finished',
   detail: '',
   statusSince: '2026-07-10T04:00:00.000Z',
   usageProject: null,
