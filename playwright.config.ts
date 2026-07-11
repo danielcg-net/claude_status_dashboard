@@ -22,5 +22,13 @@ export default defineConfig({
     url: 'http://localhost:8787/api/health',
     reuseExistingServer: !process.env.CI,
     cwd: '.',
+    env: {
+      // Exercise the notification code path end-to-end.  The URL points at a
+      // port nothing listens on so every POST fails fast (connection refused)
+      // and the fire-and-forget handler swallows it.  This proves that
+      // notification failures never affect API responses.
+      NOTIFY_WEBHOOK_URL: 'http://127.0.0.1:19999/dead',
+      NOTIFY_ON: 'started,finished,red',
+    },
   },
 })
