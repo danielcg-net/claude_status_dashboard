@@ -1374,6 +1374,18 @@ const renderUpdateBanner = (): HTMLElement | null => {
   ])
 }
 
+const dismissBanner = (): void => {
+  if (state.latestVersion) {
+    sessionStorage.setItem(versionBannerDismissedKey, state.latestVersion)
+  }
+  state = { ...state, updateAvailable: false }
+  render()
+}
+
+const attachBannerDismiss = (container: HTMLElement): void => {
+  container.querySelector('.update-banner__dismiss')?.addEventListener('click', dismissBanner)
+}
+
 const syncBanner = (): void => {
   if (!bannerWrapper) return
   const newBanner = renderUpdateBanner()
@@ -1383,13 +1395,13 @@ const syncBanner = (): void => {
     existingBanner.remove()
   } else if (newBanner && !existingBanner) {
     bannerWrapper.replaceChildren(newBanner)
+    attachBannerDismiss(bannerWrapper)
   } else if (newBanner && existingBanner) {
-    // Banner content is static once rendered; only replace if it changed.
-    // We check the latest version text to detect changes.
     const newStrong = newBanner.querySelector('strong')?.textContent
     const oldStrong = existingBanner.querySelector('strong')?.textContent
     if (newStrong && newStrong !== oldStrong) {
       bannerWrapper.replaceChildren(newBanner)
+      attachBannerDismiss(bannerWrapper)
     }
   }
 }
@@ -1510,13 +1522,6 @@ const attachBodyEvents = (): void => {
     })
   })
 
-  document.querySelector<HTMLButtonElement>('.update-banner__dismiss')?.addEventListener('click', () => {
-    if (state.latestVersion) {
-      sessionStorage.setItem(versionBannerDismissedKey, state.latestVersion)
-    }
-    state = { ...state, updateAvailable: false }
-    render()
-  })
 }
 
 const render = (): void => {
@@ -1529,7 +1534,10 @@ const render = (): void => {
 
     // Build header content
     const banner = renderUpdateBanner()
-    if (banner) bannerWrapper.append(banner)
+    if (banner) {
+      bannerWrapper.append(banner)
+      attachBannerDismiss(bannerWrapper)
+    }
 
     alertControlsRoot = buildAlertControls()
     headerEl.append(
