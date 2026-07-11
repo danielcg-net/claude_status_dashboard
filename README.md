@@ -191,16 +191,21 @@ Get pinged on your Apple Watch, phone, Slack, Teams, or anywhere else when Claud
 
 ### Configuration
 
-Add these to `compose.yml` under `environment`:
+Copy `.env.example` to `.env`, fill in your values, then add these to
+`compose.yml` under `environment` (or keep the `compose.yml` defaults
+which read from `.env`):
 
 | Variable | Default | Description |
 |---|---|---|
 | `NOTIFY_WEBHOOK_URL` | _(none)_ | URL to POST to. **Required** to enable notifications. |
 | `NOTIFY_FORMAT` | `generic` | Payload shape: `generic` \| `pushover` \| `teams` \| `slack` \| `discord` |
-| `NOTIFY_ON` | `started,finished,red` | Comma-separated events: `started`, `finished`, `red` |
+| `NOTIFY_ON` | `started,finished,idle,working,attention` | Comma-separated events |
 | `NOTIFY_HEADERS` | _(none)_ | Extra HTTP headers as a JSON object, e.g. `{"Authorization":"Bearer xxx"}` |
 | `NOTIFY_PUSHOVER_TOKEN` | _(none)_ | Pushover app token (only needed for `pushover` format) |
 | `NOTIFY_PUSHOVER_USER` | _(none)_ | Pushover user key (only needed for `pushover` format) |
+
+> **Secrets belong in `.env`, not `compose.yml`.** `.env` is gitignored.
+> Copy `.env.example` to get started.
 
 ### Event types
 

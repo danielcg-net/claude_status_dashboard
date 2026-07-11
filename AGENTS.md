@@ -11,6 +11,14 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 - For git operations: use local terminal commands (stage, commit, push). Only use GitHub MCP/API for remote-only operations (creating PRs, fetching comments).
 - Always verify commits are clean before pushing — keep each PR focused.
 
+## Secrets and credentials
+
+- **Never put secrets in committed files.** No API tokens, no user keys, no passwords, no OAuth secrets — nothing that authenticates or authorizes. Not even as placeholders, not even in docs examples. If it grants access, it goes in `.env` (gitignored) or an environment variable set outside the repo.
+- **The only committed env file is `.env.example`** — it contains commented-out variable names with no values, as documentation.
+- **If a secret is accidentally committed and pushed, rotate it immediately.** Even if the branch is deleted, GitHub caches PR diffs and commits may be accessible. The secret is burned — revoke it and generate a new one.
+- **Never ask the user for secrets unless strictly necessary.** If you must, remind them to put it in `.env`, never in a committed file.
+- `compose.yml` uses `${VAR}` substitution — values come from `.env` at runtime, not from the committed file.
+
 ## Coding conventions
 
 - **TypeScript everywhere** — backend (Hono/Node), frontend (Vanilla TS bundled to `public/assets/client.js`). TypeScript strict mode.
