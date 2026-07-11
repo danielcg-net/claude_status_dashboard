@@ -1610,7 +1610,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
         createElement('strong', {}, [String(state.sessions.filter((session) => {
           if (session.status !== status) return false
           if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-          if (state.excludedStates.size > 0 && isSessionStateExcluded(session)) return false
+          if (isSessionStateExcluded(session)) return false
           if (state.selectedRepo) {
             const project = findUsageProject(session, state.usage)
             return project?.project === state.selectedRepo
@@ -1621,8 +1621,12 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
           class: 'summary__item__exclude',
           type: 'button',
           'data-exclude-state': status,
-          'aria-label': `Exclude ${statusLabels[status]} sessions`,
-          title: `Hide ${statusLabels[status]} sessions from the grid`,
+          'aria-label': state.excludedStates.has(status)
+            ? `Show ${statusLabels[status]} sessions again`
+            : `Hide ${statusLabels[status]} sessions`,
+          title: state.excludedStates.has(status)
+            ? `Show ${statusLabels[status]} sessions again`
+            : `Hide ${statusLabels[status]} sessions from the grid`,
         }, ['✕']),
       ]),
     ),
@@ -1659,7 +1663,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
     : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
         .filter((session) => {
           if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-          if (state.excludedStates.size > 0 && isSessionStateExcluded(session)) return false
+          if (isSessionStateExcluded(session)) return false
           if (state.selectedRepo) {
             const project = findUsageProject(session, state.usage)
             return project?.project === state.selectedRepo
