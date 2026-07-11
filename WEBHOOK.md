@@ -34,8 +34,9 @@ All five are on by default. Filter with `NOTIFY_ON`:
 
 ## Enabling notifications
 
-Uncomment and set the variables under `environment` in `compose.yml`, then
-rebuild:
+1. Copy `.env.example` to `.env` and fill in your values (`.env` is gitignored).
+2. `compose.yml` reads from `.env` via `${VAR}` substitution.
+3. Rebuild:
 
 ```bash
 docker compose up -d --build
@@ -78,7 +79,7 @@ environment:
   NOTIFY_FORMAT: "pushover"
   NOTIFY_ON: "idle"
   NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
-  NOTIFY_PUSHOVER_USER: "ucj2wjj4pz63ogxf1yb4fvw9ff7mhb"
+  NOTIFY_PUSHOVER_USER: "your-user-key"
 ```
 
 `attention` events get **priority 1** (bypass quiet hours on iOS), everything
