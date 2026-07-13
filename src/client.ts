@@ -2016,7 +2016,6 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
           createElement('strong', {}, [String(ui.state.sessions.filter((session) => {
             if (session.status !== status) return false
             if (ui.state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-            if (isSessionStateExcluded(session)) return false
             if (ui.state.selectedRepo) {
               const project = findUsageProject(session, ui.state.usage)
               return project?.project === ui.state.selectedRepo
