@@ -75,7 +75,10 @@ const prettyPath = (p: string): string => {
 }
 
 /** Path to the project's .claude directory (for project-level hooks). */
-const projectClaudeDir = (): string => join(resolve('.'), '.claude')
+const projectClaudeDir = (): string => {
+  if (process.env.CLAUDE_PROJECT_CONFIG_DIR) return process.env.CLAUDE_PROJECT_CONFIG_DIR
+  return join(resolve('.'), '.claude')
+}
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -370,15 +373,24 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
       )
     }
 
-    // Populate events list — merge from both locations when hooks exist in both
-    if (base.configLocation === 'both') {
-      const globalEvents = await readHookEventNames(globalPath)
-      const projectEvents = await readHookEventNames(projectPath)
-      base.events = mergeEventLists(globalEvents, projectEvents)
-    } else if (base.configLocation === 'global') {
-      base.events = await readHookEventNames(globalPath)
-    } else if (base.configLocation === 'project') {
-      base.events = await readHookEventNames(projectPath)
+    // Populate events list — merge from both locations when hooks exist in both.
+    // Wrapped in its own try/catch: an error reading events should not flip
+    // `installed` back to false — we already confirmed hooks exist above.
+    try {
+      if (base.configLocation === 'both') {
+        const globalEvents = await readHookEventNames(globalPath)
+        const projectEvents = await readHookEventNames(projectPath)
+        base.events = mergeEventLists(globalEvents, projectEvents)
+      } else if (base.configLocation === 'global') {
+        base.events = await readHookEventNames(globalPath)
+      } else if (base.configLocation === 'project') {
+        base.events = await readHookEventNames(projectPath)
+      }
+    } catch (eventError) {
+      const message = eventError instanceof Error ? eventError.message : String(eventError)
+      console.error('detectHookStatus: error reading hook events:', message)
+      base.error = message
+      // Keep `installed` and `configLocation` as determined above.
     }
 
     base.scriptVersion = base.installed ? version : null
