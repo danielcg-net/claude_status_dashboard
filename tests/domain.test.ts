@@ -4,6 +4,7 @@ import {
   updateSession,
   deleteSession,
   serializeSessions,
+  transitionStaleSessions,
   registerSessionSchema,
   updateSessionSchema,
   type SessionStore,
@@ -398,5 +399,115 @@ describe('serializeSessions', () => {
     const b = makeSession({ id: 'b' })
     const c = makeSession({ id: 'c' })
     expect(serializeSessions(storeWith(a, b, c))).toHaveLength(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// transitionStaleSessions
+// ---------------------------------------------------------------------------
+
+describe('transitionStaleSessions', () => {
+  /** Returns an ISO timestamp from `ms` ago. */
+  const ago = (ms: number): string => new Date(Date.now() - ms).toISOString()
+
+  it('does nothing when all sessions are within the threshold', () => {
+    const session = makeSession({
+      id: 'recent',
+      status: 'working',
+      updatedAt: ago(30_000), // 30 seconds ago
+    })
+    const [store, autoIdled] = transitionStaleSessions(storeWith(session), 300_000) // 5 min threshold
+    expect(autoIdled).toHaveLength(0)
+    expect(store.get('recent')?.status).toBe('working')
+  })
+
+  it('transitions stale working session to idle', () => {
+    const session = makeSession({
+      id: 'stale-worker',
+      status: 'working',
+      updatedAt: ago(600_000), // 10 minutes ago
+    })
+    const [store, autoIdled] = transitionStaleSessions(storeWith(session), 300_000) // 5 min threshold
+    expect(autoIdled).toHaveLength(1)
+    expect(autoIdled[0]?.status).toBe('idle')
+    expect(store.get('stale-worker')?.status).toBe('idle')
+  })
+
+  it('transitions stale attention session to idle', () => {
+    const session = makeSession({
+      id: 'stale-attn',
+      status: 'attention',
+      updatedAt: ago(600_000),
+    })
+    const [store, autoIdled] = transitionStaleSessions(storeWith(session), 300_000)
+    expect(autoIdled).toHaveLength(1)
+    expect(autoIdled[0]?.status).toBe('idle')
+  })
+
+  it('does not transition stale finished session', () => {
+    const session = makeSession({
+      id: 'old-finished',
+      status: 'finished',
+      updatedAt: ago(600_000),
+    })
+    const [, autoIdled] = transitionStaleSessions(storeWith(session), 300_000)
+    expect(autoIdled).toHaveLength(0)
+  })
+
+  it('does not transition stale idle session', () => {
+    const session = makeSession({
+      id: 'old-idle',
+      status: 'idle',
+      updatedAt: ago(600_000),
+    })
+    const [, autoIdled] = transitionStaleSessions(storeWith(session), 300_000)
+    expect(autoIdled).toHaveLength(0)
+  })
+
+  it('only transitions sessions that exceed the threshold', () => {
+    const recent = makeSession({
+      id: 'recent',
+      status: 'working',
+      updatedAt: ago(60_000), // 1 minute ago
+    })
+    const stale = makeSession({
+      id: 'stale',
+      status: 'working',
+      updatedAt: ago(600_000), // 10 minutes ago
+    })
+    const [store, autoIdled] = transitionStaleSessions(storeWith(recent, stale), 300_000)
+    expect(autoIdled).toHaveLength(1)
+    expect(autoIdled[0]?.id).toBe('stale')
+    expect(store.get('recent')?.status).toBe('working')
+    expect(store.get('stale')?.status).toBe('idle')
+  })
+
+  it('preserves updatedAt and records auto-idle in detail', () => {
+    const session = makeSession({
+      id: 'stale',
+      status: 'working',
+      updatedAt: ago(600_000),
+      detail: 'Claude used Bash',
+    })
+    const [, autoIdled] = transitionStaleSessions(storeWith(session), 300_000)
+    // updatedAt stays where it was — last real hook activity, not the auto-idle time.
+    // This keeps the eviction TTL honest.
+    expect(autoIdled[0]?.updatedAt).toBe(session.updatedAt)
+    // statusSince should update since the status changed
+    expect(autoIdled[0]?.statusSince).not.toBe(session.statusSince)
+    expect(autoIdled[0]?.detail).toContain('auto-idled')
+    expect(autoIdled[0]?.detail).toContain('Claude used Bash')
+  })
+
+  it('returns original store unchanged when nothing to transition', () => {
+    const session = makeSession({
+      id: 'recent',
+      status: 'working',
+      updatedAt: ago(30_000),
+    })
+    const store = storeWith(session)
+    const [result, autoIdled] = transitionStaleSessions(store, 300_000)
+    expect(autoIdled).toHaveLength(0)
+    expect(result).toBe(store) // same reference — no copy created
   })
 })

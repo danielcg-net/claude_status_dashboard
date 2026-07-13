@@ -3,6 +3,9 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { logger } from 'hono/logger'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   beepSettingsSchema,
@@ -16,6 +19,7 @@ import {
   registerSessionSchema,
   serializeSessions,
   type SessionStore,
+  transitionStaleSessions,
   updateSession,
   updateSessionSchema,
 } from './domain.js'
@@ -28,6 +32,14 @@ import {
 } from './notify-settings.js'
 import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
+import {
+  deleteHooks,
+  detectHookStatus,
+  hookActionSchema,
+  type HookAction,
+  installHooks,
+  type HookSettings,
+} from './hook-settings.js'
 import { checkLatestVersion, compareVersions, getVersion } from './version.js'
 
 type AppState = {
@@ -36,14 +48,51 @@ type AppState = {
   readonly beepSettings: BeepSettings
 }
 
-let state: AppState = {
-  sessions: new Map(),
-  notifySettings: notifySettingsSchema.parse({}),
-  beepSettings: beepSettingsSchema.parse({}),
-}
-
 const app = new Hono()
 const staticRoot = fileURLToPath(new URL('../public', import.meta.url))
+
+// ── Mutable runtime state — all grouped into const containers ──────────
+
+const rt = {
+  state: {
+    sessions: new Map(),
+    notifySettings: notifySettingsSchema.parse({}),
+    beepSettings: beepSettingsSchema.parse({}),
+  } as AppState,
+  cache: {
+    hookRef: null as string | null,
+    usage: null as { readonly expiresAt: number; readonly summary: UsageSummary } | null,
+    version: null as { readonly expiresAt: number; readonly latestVersion: string | null } | null,
+  },
+  hooks: {
+    deletedViaPanel: false,
+    lastScope: 'global' as 'global' | 'project',
+  },
+  queues: {
+    save: Promise.resolve() as Promise<void>,
+    notifySave: Promise.resolve() as Promise<void>,
+    beepSave: Promise.resolve() as Promise<void>,
+  },
+}
+
+// Auto-detect the git ref for hook downloads. Precedence:
+//   1. dist/git-ref.txt  (generated at build time, works in Docker)
+//   2. git rev-parse      (works in dev with tsx watch)
+//   3. 'main'             (fallback)
+// Result is cached — the git ref cannot change at runtime.
+const getHookRef = (): string => {
+  if (rt.cache.hookRef !== null) return rt.cache.hookRef
+  try {
+    const ref = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), 'git-ref.txt'), 'utf-8').trim()
+    if (ref) { rt.cache.hookRef = ref; return rt.cache.hookRef }
+  } catch { /* not found */ }
+  try {
+    const ref = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    if (ref && ref !== 'HEAD') { rt.cache.hookRef = ref; return rt.cache.hookRef }
+  } catch { /* git not available or not in a repo */ }
+  rt.cache.hookRef = 'main'
+  return rt.cache.hookRef
+}
 const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
@@ -51,32 +100,30 @@ const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000
 const dataDir = process.env.DATA_DIR ?? 'data'
 const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? '604800000', 10)
 const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? '3600000', 10)
-let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
+// Sessions in 'working' or 'attention' state that haven't been updated within
+// this window are transitioned to 'idle' — the owning Claude process died.
+const staleIdleMs = Number.parseInt(process.env.SESSION_STALE_IDLE_MS ?? '300000', 10)
 const versionCheckUrl = process.env.VERSION_CHECK_URL ?? 'https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/package.json'
 const versionCheckTtlMs = Number.parseInt(process.env.VERSION_CHECK_TTL_MS ?? '3600000', 10)
 const versionCheckEnabled = (process.env.VERSION_CHECK_ENABLED ?? 'true') !== 'false'
-let versionCache: { readonly expiresAt: number; readonly latestVersion: string | null } | null = null
 
-// Serializes all writes: each save reads state.sessions at execution time so it
+// Serializes all writes: each save reads rt.state.sessions at execution time so it
 // always reflects the latest in-memory state even when multiple mutations queue up.
-let saveQueue: Promise<void> = Promise.resolve()
 const enqueueSave = (): void => {
-  saveQueue = saveQueue.then(() => saveSessions(dataDir, state.sessions)).catch((err) => {
-    console.error('Failed to persist sessions:', err)
-  })
+  rt.queues.save = rt.queues.save
+    .then(() => saveSessions(dataDir, rt.state.sessions))
+    .catch((err) => { console.error('Failed to persist sessions:', err) })
 }
 
-let notifySaveQueue: Promise<void> = Promise.resolve()
 const enqueueSaveNotifySettings = (): void => {
-  notifySaveQueue = notifySaveQueue
-    .then(() => saveNotifySettings(dataDir, state.notifySettings))
+  rt.queues.notifySave = rt.queues.notifySave
+    .then(() => saveNotifySettings(dataDir, rt.state.notifySettings))
     .catch((err) => console.error('Failed to persist notify settings:', err))
 }
 
-let beepSaveQueue: Promise<void> = Promise.resolve()
 const enqueueSaveBeepSettings = (): void => {
-  beepSaveQueue = beepSaveQueue
-    .then(() => saveBeepSettings(dataDir, state.beepSettings))
+  rt.queues.beepSave = rt.queues.beepSave
+    .then(() => saveBeepSettings(dataDir, rt.state.beepSettings))
     .catch((err) => console.error('Failed to persist beep settings:', err))
 }
 
@@ -101,15 +148,15 @@ app.get('/api/health', (context) =>
 app.get('/api/version', async (context) => {
   const currentVersion = getVersion()
 
-  if (!versionCache || Date.now() >= versionCache.expiresAt) {
+  if (!rt.cache.version || Date.now() >= rt.cache.version.expiresAt) {
     const latestVersion = versionCheckEnabled ? await checkLatestVersion(versionCheckUrl) : null
-    versionCache = {
+    rt.cache.version = {
       expiresAt: Date.now() + versionCheckTtlMs,
       latestVersion,
     }
   }
 
-  const latestVersion = versionCache.latestVersion
+  const latestVersion = rt.cache.version.latestVersion
   const updateAvailable =
     latestVersion !== null && compareVersions(latestVersion, currentVersion) > 0
 
@@ -122,18 +169,18 @@ app.get('/api/version', async (context) => {
 
 app.get('/api/sessions', (context) =>
   context.json({
-    sessions: serializeSessions(state.sessions),
+    sessions: serializeSessions(rt.state.sessions),
     redAlertAfterMs,
   }),
 )
 
 app.get('/api/usage', async (context) => {
-  if (usageCache && Date.now() < usageCache.expiresAt) {
-    return context.json(usageCache.summary)
+  if (rt.cache.usage && Date.now() < rt.cache.usage.expiresAt) {
+    return context.json(rt.cache.usage.summary)
   }
 
   const summary = await fetchUsageSummary()
-  usageCache = {
+  rt.cache.usage = {
     expiresAt: Date.now() + usageCacheTtlMs,
     summary,
   }
@@ -143,9 +190,9 @@ app.get('/api/usage', async (context) => {
 
 app.post('/api/sessions', async (context) => {
   const input = await parseJson(context.req.raw, registerSessionSchema)
-  const previous = input.id ? state.sessions.get(input.id) : undefined
-  const [sessions, session] = registerSession(state.sessions, input)
-  state = { ...state, sessions }
+  const previous = input.id ? rt.state.sessions.get(input.id) : undefined
+  const [sessions, session] = registerSession(rt.state.sessions, input)
+  rt.state = { ...rt.state, sessions }
   enqueueSave()
 
   // Fire notifications on session lifecycle events (fire-and-forget).
@@ -166,9 +213,9 @@ app.post('/api/sessions', async (context) => {
 app.patch('/api/sessions/:id', async (context) => {
   const input = await parseJson(context.req.raw, updateSessionSchema)
   const id = context.req.param('id')
-  const previous = state.sessions.get(id)
-  const [sessions, session] = updateSession(state.sessions, id, input)
-  state = { ...state, sessions }
+  const previous = rt.state.sessions.get(id)
+  const [sessions, session] = updateSession(rt.state.sessions, id, input)
+  rt.state = { ...rt.state, sessions }
 
   if (!session) {
     throw new HTTPException(404, { message: 'Session not found.' })
@@ -184,8 +231,8 @@ app.patch('/api/sessions/:id', async (context) => {
 })
 
 app.delete('/api/sessions/:id', (context) => {
-  const [sessions, deleted] = deleteSession(state.sessions, context.req.param('id'))
-  state = { ...state, sessions }
+  const [sessions, deleted] = deleteSession(rt.state.sessions, context.req.param('id'))
+  rt.state = { ...rt.state, sessions }
 
   if (!deleted) {
     throw new HTTPException(404, { message: 'Session not found.' })
@@ -214,13 +261,13 @@ const maskNotifySettings = (s: NotifySettings) => ({
 })
 
 app.get('/api/settings/notify', (context) =>
-  context.json(maskNotifySettings(state.notifySettings)),
+  context.json(maskNotifySettings(rt.state.notifySettings)),
 )
 
 app.put('/api/settings/notify', async (context) => {
   const input = await parseJson(context.req.raw, notifySettingsSchema.partial())
-  const updated = { ...state.notifySettings, ...input }
-  state = { ...state, notifySettings: updated as NotifySettings }
+  const updated = { ...rt.state.notifySettings, ...input }
+  rt.state = { ...rt.state, notifySettings: updated as NotifySettings }
   const override: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(input)) { if (v !== undefined) (override as Record<string, unknown>)[k] = v }
   setNotifyConfig(override as Parameters<typeof setNotifyConfig>[0])
@@ -231,15 +278,59 @@ app.put('/api/settings/notify', async (context) => {
 // ---- Beep settings --------------------------------------------------
 
 app.get('/api/settings/beep', (context) =>
-  context.json(state.beepSettings),
+  context.json(rt.state.beepSettings),
 )
 
 app.put('/api/settings/beep', async (context) => {
   const input = await parseJson(context.req.raw, beepSettingsSchema.partial())
-  const updated = { ...state.beepSettings, ...input }
-  state = { ...state, beepSettings: updated as BeepSettings }
+  const updated = { ...rt.state.beepSettings, ...input }
+  rt.state = { ...rt.state, beepSettings: updated as BeepSettings }
   enqueueSaveBeepSettings()
   return context.json(updated as BeepSettings)
+})
+
+// ---- Hooks settings --------------------------------------------------
+
+app.get('/api/settings/hooks', async (context) => {
+  const currentVersion = getVersion()
+  const status = await detectHookStatus(currentVersion)
+  return context.json(status)
+})
+
+app.put('/api/settings/hooks', async (context) => {
+  const parseInput = async (): Promise<HookAction> => {
+    try {
+      return await parseJson(context.req.raw, hookActionSchema)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        throw new HTTPException(400, { message: 'Invalid request body.' })
+      }
+      throw error
+    }
+  }
+  const input = await parseInput()
+  // Download ref: HOOKS_VERSION > build-time ref > runtime git > 'main'
+  // (determines which git ref to pull the hook script from — not the package version)
+  const downloadRef = process.env.HOOKS_VERSION ?? getHookRef()
+
+  try {
+    if (input.action === 'install') {
+      rt.hooks.deletedViaPanel = false
+      rt.hooks.lastScope = input.scope
+      await installHooks(input.scope, downloadRef)
+    } else {
+      await deleteHooks(input.scope)
+      rt.hooks.deletedViaPanel = true
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('PUT /api/settings/hooks failed:', message)
+    throw new HTTPException(500, { message })
+  }
+
+  // Report status with the package version (consistent with GET)
+  const status = await detectHookStatus(getVersion())
+  return context.json(status)
 })
 
 app.onError((error, context) => {
@@ -266,12 +357,12 @@ export { app }
 import { __resetNotifyConfig } from './notify.js'
 
 export const __resetForTests = (): void => {
-  state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}), beepSettings: beepSettingsSchema.parse({}) }
-  usageCache = null
-  versionCache = null
-  saveQueue = Promise.resolve()
-  notifySaveQueue = Promise.resolve()
-  beepSaveQueue = Promise.resolve()
+  rt.state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}), beepSettings: beepSettingsSchema.parse({}) }
+  rt.cache.usage = null
+  rt.cache.version = null
+  rt.queues.save = Promise.resolve()
+  rt.queues.notifySave = Promise.resolve()
+  rt.queues.beepSave = Promise.resolve()
   __resetNotifyConfig()
 }
 
@@ -283,36 +374,82 @@ if (isMain || process.env.NODE_ENV !== 'test') {
   const persistedBeepSettings = await loadBeepSettings(dataDir)
   if (persistedNotifySettings !== null) {
     setNotifyConfig(persistedNotifySettings)
-    state = { ...state, sessions, notifySettings: persistedNotifySettings }
+    rt.state = { ...rt.state, sessions, notifySettings: persistedNotifySettings }
   } else {
     // No persisted settings — seed state from runtime (env vars) so the GUI
     // shows the effective configuration instead of empty defaults.
-    const rt = getNotifyConfig()
-    state = {
-      ...state,
+    const notifyConfig = getNotifyConfig()
+    rt.state = {
+      ...rt.state,
       sessions,
       notifySettings: {
-        enabled: rt.enabled,
-        webhookUrl: rt.webhookUrl,
-        format: rt.format,
-        events: [...rt.events] as NotifySettings['events'],
-        pushoverToken: rt.pushoverToken,
-        pushoverUser: rt.pushoverUser,
-        headers: { ...rt.headers },
+        enabled: notifyConfig.enabled,
+        webhookUrl: notifyConfig.webhookUrl,
+        format: notifyConfig.format,
+        events: [...notifyConfig.events] as NotifySettings['events'],
+        pushoverToken: notifyConfig.pushoverToken,
+        pushoverUser: notifyConfig.pushoverUser,
+        headers: { ...notifyConfig.headers },
       },
     }
   }
   if (persistedBeepSettings !== null) {
-    state = { ...state, beepSettings: persistedBeepSettings }
+    rt.state = { ...rt.state, beepSettings: persistedBeepSettings }
   }
 
   const evictTimer = setInterval(() => {
-    const evicted = evictStaleSessions(state.sessions, sessionTtlMs)
-    if (evicted.size !== state.sessions.size) {
-      state = { ...state, sessions: evicted }
+    const evicted = evictStaleSessions(rt.state.sessions, sessionTtlMs)
+    if (evicted.size !== rt.state.sessions.size) {
+      rt.state = { ...rt.state, sessions: evicted }
       enqueueSave()
     }
   }, evictIntervalMs)
+
+  // Transition stale working/attention sessions to idle. Runs every 60s
+  // (staleIdleMs is the data-age threshold, not the check interval).
+  const staleTimer = setInterval(() => {
+    const [updated, autoIdled] = transitionStaleSessions(rt.state.sessions, staleIdleMs)
+    if (autoIdled.length > 0) {
+      rt.state = { ...rt.state, sessions: updated }
+      enqueueSave()
+      for (const s of autoIdled) {
+        console.log(`Auto-idled stale session: ${s.id} (${s.name}) — last update was at ${s.updatedAt}`)
+        notify(s.status, s)
+      }
+    }
+  }, 60_000)
+
+  // Periodically check that hooks haven't been overwritten by another process
+  // (e.g. Claude Code restoring its own settings.json state). Auto-repairs by
+  // silently reinstalling to the last-used scope.
+  // Check frequently — Claude Code may overwrite settings.json at any time.
+  const hooksHealthIntervalMs = Number.parseInt(
+    process.env.HOOKS_HEALTH_CHECK_INTERVAL_MS ?? '30000',
+    10,
+  )
+  const hooksHealth = { wereInstalled: false }
+  const hooksHealthTimer = setInterval(async () => {
+    const status = await detectHookStatus(getVersion())
+    if (status.installed) {
+      hooksHealth.wereInstalled = true
+      rt.hooks.deletedViaPanel = false
+      return
+    }
+    if (hooksHealth.wereInstalled && !rt.hooks.deletedViaPanel) {
+      const ref = process.env.HOOKS_VERSION ?? getHookRef()
+      console.warn(
+        'hooks health check: dashboard hooks missing — auto-repairing. ' +
+        `(scope=${rt.hooks.lastScope}, ref=${ref})`,
+      )
+      try {
+        await installHooks(rt.hooks.lastScope, ref)
+      } catch (err) {
+        console.error('hooks auto-repair failed:', (err as Error).message)
+      }
+    }
+    hooksHealth.wereInstalled = false
+    rt.hooks.deletedViaPanel = false
+  }, hooksHealthIntervalMs)
 
   const server = serve(
     {
@@ -327,11 +464,13 @@ if (isMain || process.env.NODE_ENV !== 'test') {
 
   const shutdown = (): void => {
     clearInterval(evictTimer)
+    clearInterval(staleTimer)
+    clearInterval(hooksHealthTimer)
     // Stop accepting new connections; wait for open connections to drain,
     // then flush pending saves before exiting.
     const serverClosed = new Promise<void>((resolve) => server.on('close', resolve))
     server.close()
-    Promise.all([serverClosed, saveQueue.catch(() => {}), notifySaveQueue.catch(() => {})]).finally(() => process.exit(0))
+    Promise.all([serverClosed, rt.queues.save.catch(() => {}), rt.queues.notifySave.catch(() => {})]).finally(() => process.exit(0))
   }
   process.once('SIGTERM', shutdown)
   process.once('SIGINT', shutdown)

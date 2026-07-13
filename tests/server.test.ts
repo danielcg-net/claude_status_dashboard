@@ -599,3 +599,60 @@ describe('PUT /api/settings/notify', () => {
     expect(body.pushoverToken).toBe('****')
   })
 })
+
+describe('GET /api/settings/hooks', () => {
+  it('returns hooks status as JSON', async () => {
+    const res = await app.request('/api/settings/hooks')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(typeof body.installed).toBe('boolean')
+    expect(['global', 'project', 'both', 'none']).toContain(body.configLocation)
+    expect(typeof body.scriptExists).toBe('boolean')
+    expect(typeof body.scriptPath).toBe('string')
+    expect(Array.isArray(body.events)).toBe(true)
+    expect(body.error === null || typeof body.error === 'string').toBe(true)
+  })
+})
+
+describe('PUT /api/settings/hooks', () => {
+  it('validates the action field', async () => {
+    const res = await app.request('/api/settings/hooks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'invalid' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('validates the scope field', async () => {
+    const res = await app.request('/api/settings/hooks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'install', scope: 'invalid' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('accepts valid install request (schema passes)', async () => {
+    const res = await app.request('/api/settings/hooks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'install', scope: 'global' }),
+    })
+    // Schema validation should pass (not 400). The install may fail at runtime
+    // (no GitHub access in test), but that's an operational error, not validation.
+    expect(res.status).not.toBe(400)
+  })
+
+  it('accepts valid delete request without scope (defaults to global)', async () => {
+    const res = await app.request('/api/settings/hooks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete' }),
+    })
+    // Delete when no hooks exist should be a no-op 200
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(typeof body.installed).toBe('boolean')
+  })
+})

@@ -1,11 +1,11 @@
 {
   "name": "claude-status-dashboard",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && node scripts/build-client.mjs",
+    "build": "tsc && node scripts/write-git-ref.mjs && node scripts/build-client.mjs",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

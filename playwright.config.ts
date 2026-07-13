@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:8787',
+    baseURL: `http://localhost:${process.env.PORT ?? '8787'}`,
     trace: 'on-first-retry',
   },
   projects: [
@@ -19,10 +19,11 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node dist/server.js',
-    url: 'http://localhost:8787/api/health',
+    url: `http://localhost:${process.env.PORT ?? '8787'}/api/health`,
     reuseExistingServer: !process.env.CI,
     cwd: '.',
     env: {
+      PORT: process.env.PORT ?? '8787',
       // Exercise the notification code path end-to-end.  The URL points at a
       // port nothing listens on so every POST fails fast (connection refused)
       // and the fire-and-forget handler swallows it.  This proves that
