@@ -1,6 +1,6 @@
 import { access, chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ const readSettingsJson = async (filePath: string): Promise<Record<string, unknow
  */
 const writeSettingsJson = async (filePath: string, data: Record<string, unknown>): Promise<void> => {
   const tmpPath = `${filePath}.tmp`
-  await mkdir(join(filePath, '..'), { recursive: true }).catch(() => undefined)
+  await mkdir(dirname(filePath), { recursive: true }).catch(() => undefined)
   try {
     await writeFile(tmpPath, JSON.stringify(data, null, 2) + '\n', 'utf-8')
     await rename(tmpPath, filePath)
