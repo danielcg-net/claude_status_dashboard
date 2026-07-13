@@ -482,7 +482,7 @@ describe('transitionStaleSessions', () => {
     expect(store.get('stale')?.status).toBe('idle')
   })
 
-  it('updates updatedAt and detail on auto-idled sessions', () => {
+  it('preserves updatedAt and records auto-idle in detail', () => {
     const session = makeSession({
       id: 'stale',
       status: 'working',
@@ -490,7 +490,11 @@ describe('transitionStaleSessions', () => {
       detail: 'Claude used Bash',
     })
     const [, autoIdled] = transitionStaleSessions(storeWith(session), 300_000)
-    expect(autoIdled[0]?.updatedAt).not.toBe(session.updatedAt)
+    // updatedAt stays where it was — last real hook activity, not the auto-idle time.
+    // This keeps the eviction TTL honest.
+    expect(autoIdled[0]?.updatedAt).toBe(session.updatedAt)
+    // statusSince should update since the status changed
+    expect(autoIdled[0]?.statusSince).not.toBe(session.statusSince)
     expect(autoIdled[0]?.detail).toContain('auto-idled')
     expect(autoIdled[0]?.detail).toContain('Claude used Bash')
   })

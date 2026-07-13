@@ -134,6 +134,10 @@ const TRANSIENT_STATUSES: ReadonlySet<SessionStatus> = new Set(['working', 'atte
  * A session that hasn't been updated in that long is almost certainly a
  * zombie — the Claude Code process that owned it died without firing Stop.
  * Returns the updated store and the list of auto-transitioned sessions.
+ *
+ * `updatedAt` is NOT reset — it continues to reflect the last real hook
+ * activity so the eviction TTL is measured from the original timestamp,
+ * not from the auto-idle moment.
  */
 export const transitionStaleSessions = (
   sessions: SessionStore,
@@ -148,13 +152,13 @@ export const transitionStaleSessions = (
     if (!TRANSIENT_STATUSES.has(session.status)) continue
     if (new Date(session.updatedAt).getTime() >= cutoff) continue
 
-    const timestamp = new Date().toISOString()
+    const now = new Date().toISOString()
     const transitioned: Session = {
       ...session,
       status: 'idle',
-      detail: `${session.detail} (auto-idled: no update for >${Math.round(staleThresholdMs / 60000)}min)`,
-      updatedAt: timestamp,
-      statusSince: timestamp,
+      detail: `${session.detail} (auto-idled at ${now}: no update for >${Math.round(staleThresholdMs / 60000)}min)`,
+      statusSince: now,
+      // updatedAt preserved — keeps the eviction clock honest
     }
     next.set(id, transitioned)
     autoIdled.push(transitioned)
