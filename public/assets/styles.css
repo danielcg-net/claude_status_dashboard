@@ -13,6 +13,12 @@
   --red: #ff4d5e;
   --blue: #7db7ff;
   --blue-hover: #a0cfff;
+  --toast-success-bg: #1a2e22;
+  --toast-success-border: #2d7d4f;
+  --toast-success-text: #7beba4;
+  --toast-error-bg: #2e1a1a;
+  --toast-error-border: #7d2d2d;
+  --toast-error-text: #eb7b7b;
 }
 
 * {
@@ -1914,13 +1920,13 @@ h1 {
 }
 
 .toast--success {
-  background: #1a2e22;
-  border: 1px solid #2d7d4f;
-  color: #7beba4;
+  background: var(--toast-success-bg);
+  border: 1px solid var(--toast-success-border);
+  color: var(--toast-success-text);
 }
 
 .toast--error {
-  background: #2e1a1a;
-  border: 1px solid #7d2d2d;
-  color: #eb7b7b;
+  background: var(--toast-error-bg);
+  border: 1px solid var(--toast-error-border);
+  color: var(--toast-error-text);
 }

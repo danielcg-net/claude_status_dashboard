@@ -496,11 +496,9 @@ const showToast = (message: string, type: 'success' | 'error', durationMs: numbe
     toast.classList.remove('toast--visible')
     toast.addEventListener('transitionend', () => toast.remove(), { once: true })
     // Fallback: remove after transition duration if transitionend didn't fire.
-    // Setting toastTimer = null here is safe: the primary timer has already
-    // elapsed at this point, so the next showToast() call will clear a no-op
-    // timer. The fallback's own remove() on an already-detached element (from
-    // the next toast) is also a harmless no-op.
-    setTimeout(() => { toast.remove(); toastTimer = null }, 350)
+    // Don't store this in toastTimer — it would clobber the next toast's
+    // primary timer. clearTimeout on a completed timer is a no-op anyway.
+    setTimeout(() => { toast.remove() }, 350)
   }, durationMs)
 }
 

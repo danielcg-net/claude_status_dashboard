@@ -377,6 +377,38 @@ describe('installHooks and deleteHooks', () => {
     expect(parsed.someOtherSetting).toBe(true)
   })
 
+  it('deleteHooks strips dashboard hooks from a matcher that also has user hooks', async () => {
+    // Regression: a matcher with mixed hooks (dashboard + user) must keep the
+    // user hook and remove only the dashboard one.
+    const settingsPath = join(tempDir, 'settings.json')
+    await writeFile(settingsPath, JSON.stringify({
+      hooks: {
+        SessionStart: [{
+          matcher: '.*',
+          hooks: [
+            { type: 'command', command: 'bash /tmp/claude-status-dashboard.sh', timeout: 5 },
+            { type: 'command', command: 'echo hello' },
+          ],
+        }],
+      },
+    }, null, 2))
+
+    const { deleteHooks } = await import('../src/hook-settings.js')
+    await deleteHooks('global')
+
+    const { readFile } = await import('node:fs/promises')
+    const raw = await readFile(settingsPath, 'utf-8')
+    const parsed = JSON.parse(raw)
+
+    // The event should still exist (it has a non-dashboard hook)
+    expect(parsed.hooks.SessionStart).toBeDefined()
+    expect(parsed.hooks.SessionStart).toHaveLength(1)
+    // The matcher should only have the user hook, not the dashboard one
+    const hooks = parsed.hooks.SessionStart[0].hooks
+    expect(hooks).toHaveLength(1)
+    expect(hooks[0].command).toBe('echo hello')
+  })
+
   it('deleteHooks removes hooks key entirely when no hooks remain', async () => {
     const settingsPath = join(tempDir, 'settings.json')
     await writeFile(settingsPath, JSON.stringify({

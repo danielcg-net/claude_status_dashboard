@@ -458,22 +458,33 @@ export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> =>
   // regardless of the event name it's registered under.
   for (const [event, matchers] of Object.entries(existingHooks)) {
     if (!Array.isArray(matchers)) continue
-    // Filter out matchers whose hooks reference our script
-    const filtered = matchers.filter((matcher) => {
-      if (typeof matcher !== 'object' || matcher === null) return true // keep unknown structures
+    // For each matcher, strip dashboard hooks and keep it only if non-dashboard
+    // hooks remain. When a matcher has mixed hooks (dashboard + user hooks),
+    // the matcher is kept but its hooks array is updated to exclude the
+    // dashboard entries.
+    const filtered = matchers.reduce<unknown[]>((kept, matcher) => {
+      if (typeof matcher !== 'object' || matcher === null) {
+        kept.push(matcher)
+        return kept
+      }
       const entry = matcher as Record<string, unknown>
       const hookList = entry.hooks
-      if (!Array.isArray(hookList)) return true // keep unknown structures
-      // Remove matchers where ALL hooks reference our script
+      if (!Array.isArray(hookList)) {
+        kept.push(matcher) // keep unknown structures
+        return kept
+      }
+      // Strip dashboard hooks from the hooks array
       const nonDashboard = hookList.filter((hook) => {
         if (typeof hook !== 'object' || hook === null) return true // keep unknown hooks
         const h = hook as Record<string, unknown>
         if (typeof h.command !== 'string') return true // keep non-command hooks
-        return !h.command.includes(HOOK_SCRIPT_MATCHER)
+        return !(h.command as string).includes(HOOK_SCRIPT_MATCHER)
       })
-      // If no non-dashboard hooks remain, remove this matcher
-      return nonDashboard.length > 0
-    })
+      if (nonDashboard.length === 0) return kept // all hooks were dashboard — skip matcher
+      // Replace hooks with only the non-dashboard entries
+      kept.push({ ...entry, hooks: nonDashboard })
+      return kept
+    }, [])
     if (filtered.length === 0) {
       delete existingHooks[event]
     } else {
