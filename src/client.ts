@@ -61,6 +61,16 @@ type BeepSettingsUI = {
   readonly events: readonly string[]
 }
 
+type HooksSettingsUI = {
+  readonly installed: boolean
+  readonly configLocation: 'global' | 'project' | 'both' | 'none'
+  readonly scriptExists: boolean
+  readonly scriptPath: string
+  readonly scriptVersion: string | null
+  readonly events: readonly string[]
+  readonly error: string | null
+}
+
 type AppState = ApiState & {
   readonly audioEnabled: boolean
   readonly lastBeepAt: number
@@ -78,6 +88,8 @@ type AppState = ApiState & {
   readonly notifySettingsOpen: boolean
   readonly beepSettings: BeepSettingsUI | null
   readonly beepSettingsOpen: boolean
+  readonly hooksSettings: HooksSettingsUI | null
+  readonly hooksSettingsOpen: boolean
   readonly seenSessionIds: ReadonlySet<string>
   readonly sortMode: SortMode
   readonly pageSize: number
@@ -193,6 +205,8 @@ const initialState: AppState = {
   notifySettingsOpen: false,
   beepSettings: null,
   beepSettingsOpen: false,
+  hooksSettings: null,
+  hooksSettingsOpen: false,
   seenSessionIds: new Set<string>(),
   sortMode: 'updatedAt-desc',
   pageSize: 10,
@@ -422,6 +436,15 @@ const saveBeepSettings = async (settings: Record<string, unknown>): Promise<Beep
     body: JSON.stringify(settings),
   })
 
+const loadHookSettings = async (): Promise<HooksSettingsUI> =>
+  apiFetch<HooksSettingsUI>('/api/settings/hooks')
+
+const saveHookSettings = async (settings: Record<string, unknown>): Promise<HooksSettingsUI> =>
+  apiFetch<HooksSettingsUI>('/api/settings/hooks', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+
 const notifyFormatOptions = ['generic', 'pushover', 'teams', 'slack', 'discord'] as const
 
 const notifyEventOptions = ['started', 'finished', 'idle', 'working', 'attention'] as const
@@ -451,6 +474,30 @@ const createElement = <K extends keyof HTMLElementTagNameMap>(
   })
 
   return element
+}
+
+// ── Toast notification ──────────────────────────────────────────────
+
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+const showToast = (message: string, type: 'success' | 'error', durationMs: number = 3500): void => {
+  // Remove any existing toast
+  if (toastTimer !== null) clearTimeout(toastTimer)
+  const existing = document.querySelector('.toast')
+  if (existing) existing.remove()
+
+  const toast = createElement('div', { class: `toast toast--${type}`, role: 'status', 'data-testid': 'toast' }, [message])
+  document.body.append(toast)
+
+  // Trigger enter animation
+  requestAnimationFrame(() => toast.classList.add('toast--visible'))
+
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('toast--visible')
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true })
+    // Fallback: remove after transition duration if transitionend didn't fire
+    setTimeout(() => { toast.remove(); toastTimer = null }, 350)
+  }, durationMs)
 }
 
 const formatNumber = (value: number): string => new Intl.NumberFormat().format(value)
@@ -1156,6 +1203,7 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 let alertControlsRoot: HTMLElement | null = null
 let notifyPanelEl: HTMLElement | null = null
 let beepPanelEl: HTMLElement | null = null
+let hooksPanelEl: HTMLElement | null = null
 let alertControlsLive = false
 
 // Helper: sync an input's value only when it is NOT focused (user is not
@@ -1324,6 +1372,12 @@ const syncAlertControlsInPlace = (): void => {
     notifyToggle.classList.toggle('audio-toggle--active', state.notifySettingsOpen)
   }
 
+  // Hooks toggle active class
+  const hooksToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#hooks-toggle')
+  if (hooksToggle) {
+    hooksToggle.classList.toggle('audio-toggle--active', state.hooksSettingsOpen)
+  }
+
   // ── Beep panel visibility transitions ──
   {
     const s = state.beepSettings
@@ -1357,6 +1411,23 @@ const syncAlertControlsInPlace = (): void => {
       notifyPanelEl = null
     }
   }
+
+  // ── Hooks panel visibility transitions ──
+  {
+    const s = state.hooksSettings
+    const shouldShow = state.hooksSettingsOpen && s !== null
+
+    if (shouldShow && !hooksPanelEl) {
+      hooksPanelEl = buildHooksPanel(s)
+      alertControlsRoot.append(hooksPanelEl)
+      attachHooksPanelEvents()
+    } else if (shouldShow && hooksPanelEl) {
+      syncHooksPanelFields(hooksPanelEl, s)
+    } else if (!shouldShow && hooksPanelEl) {
+      hooksPanelEl.remove()
+      hooksPanelEl = null
+    }
+  }
 }
 
 // ── Build the initial alert controls DOM (first render only) ──
@@ -1373,6 +1444,11 @@ const buildAlertControls = (): HTMLElement => {
       class: `audio-toggle${state.notifySettingsOpen ? ' audio-toggle--active' : ''}`,
       type: 'button',
     }, ['Notifications']),
+    createElement('button', {
+      id: 'hooks-toggle',
+      class: `audio-toggle${state.hooksSettingsOpen ? ' audio-toggle--active' : ''}`,
+      type: 'button',
+    }, ['Hooks']),
   ]
 
   return createElement('div', { class: 'alert-controls', 'aria-label': 'Alert and notification controls' }, children)
@@ -1395,6 +1471,12 @@ const attachAlertControlEvents = (): void => {
     state = { ...state, notifySettingsOpen: !state.notifySettingsOpen }
     render()
   })
+
+  // Hooks toggle: open/close settings panel
+  document.querySelector<HTMLButtonElement>('#hooks-toggle')?.addEventListener('click', () => {
+    state = { ...state, hooksSettingsOpen: !state.hooksSettingsOpen }
+    render()
+  })
 }
 
 const attachNotifyPanelEvents = (): void => {
@@ -1410,7 +1492,10 @@ const attachNotifyPanelEvents = (): void => {
     try {
       const updated = await saveNotifySettings({ enabled: checked })
       state = { ...state, notifySettings: updated }
-    } catch { /* ignore */ }
+      showToast(`Notifications ${checked ? 'enabled' : 'disabled'}`, 'success')
+    } catch {
+      showToast('Failed to update notification settings', 'error')
+    }
     render()
   })
 
@@ -1435,7 +1520,9 @@ const attachNotifyPanelEvents = (): void => {
     try {
       const updated = await saveNotifySettings(body)
       state = { ...state, notifySettings: updated }
+      showToast('Notification settings saved', 'success')
     } catch (err) {
+      showToast('Failed to save notification settings', 'error')
       console.error('Failed to save notify settings:', err)
     }
     render()
@@ -1517,7 +1604,7 @@ const buildBeepPanel = (s: BeepSettingsUI): HTMLElement =>
       ),
     ]),
     // Save
-    createElement('button', { id: 'beep-save', type: 'button' }, ['Save Settings']),
+    createElement('button', { id: 'beep-save', 'data-testid': 'beep-save', type: 'button' }, ['Save Settings']),
   ])
 
 const syncBeepPanelFields = (panel: HTMLElement, s: BeepSettingsUI): void => {
@@ -1594,7 +1681,10 @@ const attachBeepPanelEvents = (): void => {
         redAlertAfterOverrideMs: updated.alertAfterMs,
         maxBeeps: updated.maxBeeps,
       }
-    } catch { /* ignore */ }
+      showToast(`Beeps ${enabled ? 'enabled' : 'disabled'}`, 'success')
+    } catch {
+      showToast('Failed to update beep settings', 'error')
+    }
     render()
   })
 
@@ -1635,8 +1725,176 @@ const attachBeepPanelEvents = (): void => {
         lastBeepAt: 0,
         beepCount: 0,
       }
+      showToast('Beep settings saved', 'success')
     } catch (err) {
+      showToast('Failed to save beep settings', 'error')
       console.error('Failed to save beep settings:', err)
+    }
+    render()
+  })
+}
+
+// ── Hooks settings floating panel ─────────────────────────────────────
+
+const buildHooksPanel = (s: HooksSettingsUI): HTMLElement => {
+  const installedBadge = s.installed
+    ? createElement('span', { class: 'hooks-panel__badge hooks-panel__badge--ok' }, ['Installed'])
+    : createElement('span', { class: 'hooks-panel__badge hooks-panel__badge--warn' }, ['Not installed'])
+
+  const scriptBadge = s.scriptExists
+    ? createElement('span', { class: 'hooks-panel__badge hooks-panel__badge--ok' }, ['Script exists'])
+    : createElement('span', { class: 'hooks-panel__badge hooks-panel__badge--warn' }, ['Script missing'])
+
+  const locationLabel: Record<string, string> = {
+    global: 'Global (~/.claude/settings.json)',
+    project: 'Project (.claude/settings.json)',
+    both: 'Both global & project',
+    none: 'Not configured',
+  }
+
+  const children: HTMLElement[] = [
+    // Header
+    createElement('div', { class: 'hooks-panel__header' }, [
+      createElement('h3', {}, ['Hooks Setup']),
+      createElement('button', {
+        class: 'hooks-panel__close',
+        type: 'button',
+        'aria-label': 'Close hooks settings',
+        'data-testid': 'hooks-panel-close',
+      }, ['✕']),
+    ]),
+    // Status section
+    createElement('div', { class: 'hooks-panel__status' }, [
+      createElement('div', { class: 'hooks-panel__status-row' }, [
+        createElement('span', { class: 'hooks-panel__label' }, ['Status:']),
+        installedBadge,
+      ]),
+      createElement('div', { class: 'hooks-panel__status-row' }, [
+        createElement('span', { class: 'hooks-panel__label' }, ['Location:']),
+        createElement('span', {}, [locationLabel[s.configLocation] ?? s.configLocation]),
+      ]),
+      createElement('div', { class: 'hooks-panel__status-row' }, [
+        createElement('span', { class: 'hooks-panel__label' }, ['Script:']),
+        scriptBadge,
+        createElement('code', { class: 'hooks-panel__path' }, [s.scriptPath]),
+      ]),
+      ...(s.events.length > 0 ? [
+        createElement('div', { class: 'hooks-panel__status-row' }, [
+          createElement('span', { class: 'hooks-panel__label' }, ['Events:']),
+          createElement('span', {}, [`${s.events.length} events configured`]),
+        ]),
+      ] : []),
+      ...(s.scriptVersion ? [
+        createElement('div', { class: 'hooks-panel__status-row' }, [
+          createElement('span', { class: 'hooks-panel__label' }, ['Version:']),
+          createElement('code', {}, [`v${s.scriptVersion}`]),
+        ]),
+      ] : []),
+      ...(s.error ? [
+        createElement('div', { class: 'hooks-panel__error' }, [s.error]),
+      ] : []),
+    ]),
+    // Scope selector
+    createElement('div', { class: 'hooks-panel__field' }, [
+      createElement('label', { for: 'hooks-scope' }, ['Where to install hooks:']),
+      createElement('select', {
+        id: 'hooks-scope',
+        class: 'hooks-panel__select',
+      }, [
+        createElement('option', {
+          value: 'global',
+          selected: s.configLocation === 'global' ? 'true' : undefined,
+        }, ['Global (~/.claude/settings.json)']),
+        createElement('option', {
+          value: 'project',
+          selected: s.configLocation === 'project' ? 'true' : undefined,
+        }, ['Project (.claude/settings.json)']),
+      ]),
+    ]),
+    // Action buttons
+    createElement('div', { class: 'hooks-panel__actions' }, [
+      createElement('button', {
+        id: 'hooks-install',
+        class: 'hooks-panel__btn hooks-panel__btn--primary',
+        type: 'button',
+      }, ['Install / Update Hooks']),
+      ...(s.installed ? [
+        createElement('button', {
+          id: 'hooks-delete',
+          class: 'hooks-panel__btn hooks-panel__btn--danger',
+          type: 'button',
+        }, ['Delete Hooks']),
+      ] : []),
+    ]),
+  ]
+
+  return createElement('div', { class: 'alert-controls__hooks-panel', 'data-testid': 'hooks-panel' }, children)
+}
+
+const syncHooksPanelFields = (panel: HTMLElement, s: HooksSettingsUI): void => {
+  // Update installed badge
+  const badges = panel.querySelectorAll<HTMLElement>('.hooks-panel__badge')
+  if (badges.length >= 2) {
+    const b0 = badges[0]!
+    b0.textContent = s.installed ? 'Installed' : 'Not installed'
+    b0.className = s.installed ? 'hooks-panel__badge hooks-panel__badge--ok' : 'hooks-panel__badge hooks-panel__badge--warn'
+    const b1 = badges[1]!
+    b1.textContent = s.scriptExists ? 'Script exists' : 'Script missing'
+    b1.className = s.scriptExists ? 'hooks-panel__badge hooks-panel__badge--ok' : 'hooks-panel__badge hooks-panel__badge--warn'
+  }
+
+  // Show/hide delete button
+  const deleteBtn = panel.querySelector<HTMLButtonElement>('#hooks-delete')
+  if (deleteBtn) {
+    deleteBtn.style.display = s.installed ? '' : 'none'
+  } else if (s.installed) {
+    // Button doesn't exist but should — re-create panel
+    return
+  }
+
+  // Show/hide error
+  const errorEl = panel.querySelector<HTMLElement>('.hooks-panel__error')
+  if (errorEl) {
+    if (s.error) {
+      errorEl.textContent = s.error
+      errorEl.style.display = ''
+    } else {
+      errorEl.style.display = 'none'
+    }
+  }
+}
+
+const attachHooksPanelEvents = (): void => {
+  // Close button
+  document.querySelector('.hooks-panel__close')?.addEventListener('click', () => {
+    state = { ...state, hooksSettingsOpen: false }
+    render()
+  })
+
+  // Install / Update button
+  document.querySelector<HTMLButtonElement>('#hooks-install')?.addEventListener('click', async () => {
+    const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
+    try {
+      const updated = await saveHookSettings({ action: 'install', scope })
+      state = { ...state, hooksSettings: updated }
+      showToast('Hooks installed successfully', 'success')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      showToast(`Failed to install hooks: ${message}`, 'error')
+    }
+    render()
+  })
+
+  // Delete button
+  document.querySelector<HTMLButtonElement>('#hooks-delete')?.addEventListener('click', async () => {
+    const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
+    try {
+      const updated = await saveHookSettings({ action: 'delete', scope })
+      state = { ...state, hooksSettings: updated }
+      showToast('Hooks deleted', 'success')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      showToast(`Failed to delete hooks: ${message}`, 'error')
     }
     render()
   })
@@ -1986,6 +2244,13 @@ const render = (): void => {
       attachBeepPanelEvents()
     }
 
+    // Show hooks panel if already open at startup
+    if (state.hooksSettingsOpen && state.hooksSettings) {
+      hooksPanelEl = buildHooksPanel(state.hooksSettings)
+      alertControlsRoot.append(hooksPanelEl)
+      attachHooksPanelEvents()
+    }
+
     firstRender = false
     return
   }
@@ -2060,6 +2325,24 @@ Promise.all([
       audioEnabled: false, // always start muted — browsers require user gesture for AudioContext
       redAlertAfterOverrideMs: settings.alertAfterMs,
       maxBeeps: settings.maxBeeps,
+    }
+  }),
+  // Hooks status is loaded optimistically — failures (e.g. Docker without
+  // filesystem access) are surfaced in the UI via the error field.
+  loadHookSettings().then(settings => {
+    state = { ...state, hooksSettings: settings }
+  }).catch(() => {
+    state = {
+      ...state,
+      hooksSettings: {
+        installed: false,
+        configLocation: 'none',
+        scriptExists: false,
+        scriptPath: '',
+        scriptVersion: null,
+        events: [],
+        error: 'Failed to load hooks status. Is the filesystem accessible?',
+      },
     }
   }),
 ]).then(() => render()).catch(() => { render() })

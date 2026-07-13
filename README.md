@@ -157,6 +157,18 @@ Optional — the hook works without any of these:
 
 The hook auto-detects the ccusage project key by walking up to the nearest Git root, so `CLAUDE_STATUS_USAGE_PROJECT` is rarely needed.
 
+### Hooks Setup Panel
+
+Instead of editing `settings.json` manually, you can use the **Hooks** button in the dashboard header alongside Beeps and Notifications. The panel lets you:
+
+- **Check status** — see whether hooks are configured, where (global or project-level), and which events are wired up.
+- **Install / Update** — downloads the hook script from the corresponding GitHub release, writes it to `~/.claude-status-dashboard/hooks/`, and adds the hook entries to the chosen `settings.json`.
+- **Delete** — removes the dashboard hook entries from `settings.json` (other hooks and settings are preserved).
+
+> **Docker note:** The hooks panel needs write access to your `~/.claude` and `~/.claude-status-dashboard` directories. The `compose.yml` mounts both as writable volumes. If you're running outside Docker, the server process needs filesystem access to these paths.
+
+The panel uses the dashboard's own version tag to fetch the hook script (or set `HOOKS_VERSION` to pin a specific release).
+
 ---
 
 ## Beeps

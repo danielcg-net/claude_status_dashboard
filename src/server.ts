@@ -28,6 +28,13 @@ import {
 } from './notify-settings.js'
 import { evictStaleSessions, loadSessions, saveSessions } from './session-store.js'
 import { fetchUsageSummary, type UsageSummary } from './usage.js'
+import {
+  deleteHooks,
+  detectHookStatus,
+  hookActionSchema,
+  installHooks,
+  type HookSettings,
+} from './hook-settings.js'
 import { checkLatestVersion, compareVersions, getVersion } from './version.js'
 
 type AppState = {
@@ -44,6 +51,26 @@ let state: AppState = {
 
 const app = new Hono()
 const staticRoot = fileURLToPath(new URL('../public', import.meta.url))
+
+// Auto-detect the git ref for hook downloads. Precedence:
+//   1. dist/git-ref.txt  (generated at build time, works in Docker)
+//   2. git rev-parse      (works in dev with tsx watch)
+//   3. 'main'             (fallback)
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { execSync } from 'node:child_process'
+
+const getHookRef = (): string => {
+  try {
+    const ref = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), 'git-ref.txt'), 'utf-8').trim()
+    if (ref) return ref
+  } catch { /* not found */ }
+  try {
+    const ref = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+    if (ref && ref !== 'HEAD') return ref
+  } catch { /* git not available or not in a repo */ }
+  return 'main'
+}
 const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
 const redAlertAfterMs = Number.parseInt(process.env.RED_ALERT_AFTER_MS ?? '300000', 10)
@@ -240,6 +267,35 @@ app.put('/api/settings/beep', async (context) => {
   state = { ...state, beepSettings: updated as BeepSettings }
   enqueueSaveBeepSettings()
   return context.json(updated as BeepSettings)
+})
+
+// ---- Hooks settings --------------------------------------------------
+
+app.get('/api/settings/hooks', async (context) => {
+  const currentVersion = getVersion()
+  const status = await detectHookStatus(currentVersion)
+  return context.json(status)
+})
+
+app.put('/api/settings/hooks', async (context) => {
+  const input = await parseJson(context.req.raw, hookActionSchema)
+  // Auto-detect: HOOKS_VERSION > build-time ref > runtime git > 'main'
+  const version = process.env.HOOKS_VERSION ?? getHookRef()
+
+  try {
+    if (input.action === 'install') {
+      await installHooks(input.scope, version)
+    } else {
+      await deleteHooks(input.scope)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('PUT /api/settings/hooks failed:', message)
+    throw new HTTPException(500, { message })
+  }
+
+  const status = await detectHookStatus(version)
+  return context.json(status)
 })
 
 app.onError((error, context) => {

@@ -7,6 +7,7 @@ services:
     environment:
       PORT: "8787"
       HOST: "0.0.0.0"
+      HOME: "${HOME}"
       RED_ALERT_AFTER_MS: "300000"
       USAGE_CACHE_TTL_MS: "30000"
       CLAUDE_CONFIG_DIR: "/claude"
@@ -20,7 +21,8 @@ services:
       NOTIFY_PUSHOVER_USER: "${NOTIFY_PUSHOVER_USER}"
       NOTIFY_HEADERS: "${NOTIFY_HEADERS}"
     volumes:
-      - "${HOME}/.claude:/claude:ro"
+      - "${HOME}/.claude:/claude"
+      - "${HOME}/.claude-status-dashboard:${HOME}/.claude-status-dashboard"
       - dashboard-data:/data
     restart: unless-stopped
 
