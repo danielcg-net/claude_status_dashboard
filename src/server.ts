@@ -94,6 +94,7 @@ let versionCache: { readonly expiresAt: number; readonly latestVersion: string |
 // Set by the hooks API handler to suppress the health-check warning when the
 // user intentionally deletes hooks via the panel.
 let hooksDeletedViaPanel = false
+let hooksLastScope: 'global' | 'project' = 'global'
 
 // Serializes all writes: each save reads state.sessions at execution time so it
 // always reflects the latest in-memory state even when multiple mutations queue up.
@@ -305,6 +306,7 @@ app.put('/api/settings/hooks', async (context) => {
   try {
     if (input.action === 'install') {
       hooksDeletedViaPanel = false
+      hooksLastScope = input.scope
       await installHooks(input.scope, downloadRef)
     } else {
       await deleteHooks(input.scope)
@@ -407,13 +409,14 @@ if (isMain || process.env.NODE_ENV !== 'test') {
   }, 60_000)
 
   // Periodically check that hooks haven't been overwritten by another process
-  // (e.g. Claude Code restoring its own settings.json state). Logs a warning
-  // so the user knows to re-install.
+  // (e.g. Claude Code restoring its own settings.json state). Auto-repairs by
+  // silently reinstalling to the last-used scope.
   const hooksHealthIntervalMs = Number.parseInt(
     process.env.HOOKS_HEALTH_CHECK_INTERVAL_MS ?? '300000',
     10,
   )
   let hooksWereInstalled = false
+  let hooksLastScope: 'global' | 'project' = 'global'
   const hooksHealthTimer = setInterval(async () => {
     const status = await detectHookStatus(getVersion())
     if (status.installed) {
@@ -422,11 +425,16 @@ if (isMain || process.env.NODE_ENV !== 'test') {
       return
     }
     if (hooksWereInstalled && !hooksDeletedViaPanel) {
+      const ref = process.env.HOOKS_VERSION ?? getHookRef()
       console.warn(
-        'hooks health check: dashboard hooks have been removed from settings. ' +
-        `(global=${status.configLocation === 'none' ? 'missing' : status.configLocation}) ` +
-        'Another process (e.g. Claude Code) may have overwritten them. Reinstall from the Hooks panel.',
+        'hooks health check: dashboard hooks missing — auto-repairing. ' +
+        `(scope=${hooksLastScope}, ref=${ref})`,
       )
+      try {
+        await installHooks(hooksLastScope, ref)
+      } catch (err) {
+        console.error('hooks auto-repair failed:', (err as Error).message)
+      }
     }
     hooksWereInstalled = false
     hooksDeletedViaPanel = false
