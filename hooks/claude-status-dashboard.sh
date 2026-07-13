@@ -30,6 +30,7 @@ const sessionShort = String(sessionId).slice(0, 8)
 const projectName = path.basename(projectRoot) || projectRoot
 const toolName = typeof input.tool_name === 'string' ? input.tool_name : ''
 const reason = typeof input.reason === 'string' ? input.reason : ''
+const userPrompt = typeof input.user_prompt === 'string' ? input.user_prompt : ''
 
 const usageProject =
   process.env.CLAUDE_STATUS_USAGE_PROJECT ||
@@ -68,6 +69,7 @@ const payload = {
   usageProject,
   status: statusFor(),
   detail: detailFor(),
+  summary: userPrompt ? userPrompt.slice(0, 200) : undefined,
 }
 
 process.stdout.write(JSON.stringify(payload))

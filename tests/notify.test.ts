@@ -12,6 +12,7 @@ const makeSession = (overrides?: Partial<Session>): Session => ({
   name: 'my-project',
   status: 'working',
   detail: '',
+  summary: '',
   usageProject: '/home/user/my-project',
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',

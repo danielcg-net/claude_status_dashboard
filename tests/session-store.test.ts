@@ -11,6 +11,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   usageProject: null,
   status: 'finished',
   detail: 'done',
+  summary: '',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   statusSince: new Date().toISOString(),

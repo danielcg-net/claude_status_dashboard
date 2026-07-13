@@ -10,12 +10,14 @@ export const registerSessionSchema = z.object({
   usageProject: z.string().trim().min(1).max(260).optional(),
   status: sessionStatusSchema.default('working'),
   detail: z.string().trim().max(500).optional(),
+  summary: z.string().trim().max(200).optional(),
 })
 
 export const updateSessionSchema = z.object({
   status: sessionStatusSchema,
   usageProject: z.string().trim().min(1).max(260).optional(),
   detail: z.string().trim().max(500).optional(),
+  summary: z.string().trim().max(200).optional(),
 })
 
 export type SessionStatus = (typeof sessionStatuses)[number]
@@ -47,6 +49,7 @@ export type Session = {
   readonly usageProject: string | null
   readonly status: SessionStatus
   readonly detail: string
+  readonly summary: string
   readonly createdAt: string
   readonly updatedAt: string
   readonly statusSince: string
@@ -77,6 +80,7 @@ export const registerSession = (
     usageProject: input.usageProject ?? previous?.usageProject ?? null,
     status: input.status,
     detail: input.detail ?? previous?.detail ?? '',
+    summary: input.summary ?? previous?.summary ?? '',
     createdAt: previous?.createdAt ?? timestamp,
     updatedAt: timestamp,
     statusSince: statusChanged ? timestamp : (previous?.statusSince ?? timestamp),
@@ -103,6 +107,7 @@ export const updateSession = (
     status: input.status,
     usageProject: input.usageProject ?? previous.usageProject,
     detail: input.detail ?? previous.detail,
+    summary: input.summary ?? previous.summary,
     updatedAt: timestamp,
     statusSince: statusChanged ? timestamp : previous.statusSince,
   }

@@ -187,6 +187,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   updatedAt: '2026-07-10T12:00:00.000Z',
   status: 'finished',
   detail: '',
+  summary: '',
   statusSince: '2026-07-10T10:00:00.000Z',
   usageProject: null,
   ...overrides,
