@@ -53,7 +53,8 @@ const statusFor = () => {
   if (event === 'Notification' || event === 'PermissionRequest' || event === 'Elicitation') return 'attention'
   if (event === 'Stop' || event === 'SubagentStop') return 'finished'
   if (event === 'StopFailure') return 'attention'
-  if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'idle'
+  if (event === 'SessionStart') return 'idle'
+  if (event === 'UserPromptSubmit') return 'working'
   return 'working'
 }
 
