@@ -19,6 +19,7 @@ import {
   registerSessionSchema,
   serializeSessions,
   type SessionStore,
+  transitionStaleSessions,
   updateSession,
   updateSessionSchema,
 } from './domain.js'
@@ -82,6 +83,9 @@ const usageCacheTtlMs = Number.parseInt(process.env.USAGE_CACHE_TTL_MS ?? '30000
 const dataDir = process.env.DATA_DIR ?? 'data'
 const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? '604800000', 10)
 const evictIntervalMs = Number.parseInt(process.env.SESSION_EVICT_INTERVAL_MS ?? '3600000', 10)
+// Sessions in 'working' or 'attention' state that haven't been updated within
+// this window are transitioned to 'idle' — the owning Claude process died.
+const staleIdleMs = Number.parseInt(process.env.SESSION_STALE_IDLE_MS ?? '300000', 10)
 let usageCache: { readonly expiresAt: number; readonly summary: UsageSummary } | null = null
 const versionCheckUrl = process.env.VERSION_CHECK_URL ?? 'https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/package.json'
 const versionCheckTtlMs = Number.parseInt(process.env.VERSION_CHECK_TTL_MS ?? '3600000', 10)
@@ -384,6 +388,19 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     }
   }, evictIntervalMs)
 
+  // Transition stale working/attention sessions to idle. Runs every 60s
+  // (staleIdleMs is the data-age threshold, not the check interval).
+  const staleTimer = setInterval(() => {
+    const [updated, autoIdled] = transitionStaleSessions(state.sessions, staleIdleMs)
+    if (autoIdled.length > 0) {
+      state = { ...state, sessions: updated }
+      enqueueSave()
+      for (const s of autoIdled) {
+        console.log(`Auto-idled stale session: ${s.id} (${s.name}) — last update was at ${s.updatedAt}`)
+      }
+    }
+  }, 60_000)
+
   const server = serve(
     {
       fetch: app.fetch,
@@ -397,6 +414,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
 
   const shutdown = (): void => {
     clearInterval(evictTimer)
+    clearInterval(staleTimer)
     // Stop accepting new connections; wait for open connections to drain,
     // then flush pending saves before exiting.
     const serverClosed = new Promise<void>((resolve) => server.on('close', resolve))

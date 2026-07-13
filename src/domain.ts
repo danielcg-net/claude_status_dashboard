@@ -119,3 +119,47 @@ export const deleteSession = (sessions: SessionStore, id: string): readonly [Ses
   next.delete(id)
   return [next, true]
 }
+
+/**
+ * Sessions in these transient states may be stale if the Stop hook never
+ * fired (e.g. Claude Code was killed or crashed). They are candidates for
+ * automatic transition to 'idle' after the stale threshold elapses.
+ */
+const TRANSIENT_STATUSES: ReadonlySet<SessionStatus> = new Set(['working', 'attention'])
+
+/**
+ * Transitions sessions stuck in transient states ('working', 'attention')
+ * to 'idle' when their `updatedAt` is older than `staleThresholdMs`.
+ *
+ * A session that hasn't been updated in that long is almost certainly a
+ * zombie — the Claude Code process that owned it died without firing Stop.
+ * Returns the updated store and the list of auto-transitioned sessions.
+ */
+export const transitionStaleSessions = (
+  sessions: SessionStore,
+  staleThresholdMs: number,
+): readonly [SessionStore, Session[]] => {
+  const cutoff = Date.now() - staleThresholdMs
+  const autoIdled: Session[] = []
+  let changed = false
+  const next = new Map(sessions)
+
+  for (const [id, session] of next) {
+    if (!TRANSIENT_STATUSES.has(session.status)) continue
+    if (new Date(session.updatedAt).getTime() >= cutoff) continue
+
+    const timestamp = new Date().toISOString()
+    const transitioned: Session = {
+      ...session,
+      status: 'idle',
+      detail: `${session.detail} (auto-idled: no update for >${Math.round(staleThresholdMs / 60000)}min)`,
+      updatedAt: timestamp,
+      statusSince: timestamp,
+    }
+    next.set(id, transitioned)
+    autoIdled.push(transitioned)
+    changed = true
+  }
+
+  return changed ? ([next, autoIdled] as const) : ([sessions, autoIdled] as const)
+}
