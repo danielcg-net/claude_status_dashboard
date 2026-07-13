@@ -3,6 +3,9 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { logger } from 'hono/logger'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   beepSettingsSchema,
@@ -32,6 +35,7 @@ import {
   deleteHooks,
   detectHookStatus,
   hookActionSchema,
+  type HookAction,
   installHooks,
   type HookSettings,
 } from './hook-settings.js'
@@ -56,10 +60,6 @@ const staticRoot = fileURLToPath(new URL('../public', import.meta.url))
 //   1. dist/git-ref.txt  (generated at build time, works in Docker)
 //   2. git rev-parse      (works in dev with tsx watch)
 //   3. 'main'             (fallback)
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { execSync } from 'node:child_process'
-
 const getHookRef = (): string => {
   try {
     const ref = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), 'git-ref.txt'), 'utf-8').trim()
@@ -278,7 +278,15 @@ app.get('/api/settings/hooks', async (context) => {
 })
 
 app.put('/api/settings/hooks', async (context) => {
-  const input = await parseJson(context.req.raw, hookActionSchema)
+  let input: HookAction
+  try {
+    input = await parseJson(context.req.raw, hookActionSchema)
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ZodError') {
+      throw new HTTPException(400, { message: 'Invalid request body.' })
+    }
+    throw error
+  }
   // Auto-detect: HOOKS_VERSION > build-time ref > runtime git > 'main'
   const version = process.env.HOOKS_VERSION ?? getHookRef()
 

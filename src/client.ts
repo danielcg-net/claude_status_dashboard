@@ -1848,7 +1848,12 @@ const syncHooksPanelFields = (panel: HTMLElement, s: HooksSettingsUI): void => {
   if (deleteBtn) {
     deleteBtn.style.display = s.installed ? '' : 'none'
   } else if (s.installed) {
-    // Button doesn't exist but should — re-create panel
+    // Button doesn't exist but should — rebuild panel in-place
+    const newPanel = buildHooksPanel(s)
+    panel.replaceWith(newPanel)
+    hooksPanelEl = newPanel
+    attachHooksPanelEvents()
+    // New panel has all fields up-to-date; skip remaining sync
     return
   }
 

@@ -109,6 +109,13 @@ export type HookAction = z.infer<typeof hookActionSchema>
  * absolute path to the installed script.
  */
 export const downloadHookScript = async (version: string): Promise<string> => {
+  // Only allow safe characters to prevent path traversal in GitHub raw URLs.
+  // Allows alphanumeric, dots, underscores, hyphens, and forward slashes
+  // (for branch names like feat/hooks-setup-panel). Rejects ".." segments.
+  if (!/^[a-zA-Z0-9._/-]+$/.test(version) || version.includes('..')) {
+    throw new Error(`Invalid version string: ${JSON.stringify(version)}`)
+  }
+
   const dir = hooksInstallDir()
   const scriptPath = join(dir, HOOK_SCRIPT_NAME)
 
