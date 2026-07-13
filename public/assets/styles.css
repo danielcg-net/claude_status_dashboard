@@ -360,6 +360,86 @@ h1 {
   opacity: 1;
 }
 
+/* ── Session toolbar (sort + pagination) ────────────────────────── */
+
+.session-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.session-toolbar__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.session-toolbar__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 0 8px;
+  white-space: nowrap;
+  line-height: 34px;
+}
+
+.session-toolbar__btn {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--muted);
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.session-toolbar__btn:last-child {
+  border-right: 0;
+}
+
+.session-toolbar__btn:hover,
+.session-toolbar__btn--active {
+  background: #2b3440;
+  color: var(--text);
+}
+
+.session-toolbar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.session-toolbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.session-toolbar__page-info {
+  color: var(--muted);
+  font-size: 0.84rem;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+@media (max-width: 720px) {
+  .session-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .session-toolbar__nav {
+    margin-left: 0;
+    justify-content: center;
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));

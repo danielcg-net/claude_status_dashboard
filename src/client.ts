@@ -79,7 +79,12 @@ type AppState = ApiState & {
   readonly beepSettings: BeepSettingsUI | null
   readonly beepSettingsOpen: boolean
   readonly seenSessionIds: ReadonlySet<string>
+  readonly sortMode: SortMode
+  readonly pageSize: number
+  readonly pageIndex: number
 }
+
+type SortMode = 'status' | 'updatedAt-desc' | 'updatedAt-asc'
 
 const statusLabels: Record<SessionStatus, string> = {
   finished: 'Finished',
@@ -189,6 +194,9 @@ const initialState: AppState = {
   beepSettings: null,
   beepSettingsOpen: false,
   seenSessionIds: new Set<string>(),
+  sortMode: 'updatedAt-desc',
+  pageSize: 10,
+  pageIndex: 0,
 }
 
 const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
@@ -242,6 +250,48 @@ const formatLocalTime = (isoDate: string): string | null => {
     minute: '2-digit',
     second: '2-digit',
   }).format(new Date(utcMs))
+}
+
+// ── Session sorting and pagination ──────────────────────────────────────────
+
+const statusSortOrder: Record<SessionStatus, number> = {
+  attention: 0,
+  working: 1,
+  idle: 2,
+  finished: 3,
+}
+
+const sortSessions = (sessions: readonly Session[], mode: SortMode): readonly Session[] => {
+  const sorted = [...sessions]
+  switch (mode) {
+    case 'status':
+      return sorted.sort((a, b) => {
+        const orderDiff = statusSortOrder[a.status] - statusSortOrder[b.status]
+        if (orderDiff !== 0) return orderDiff
+        // Secondary sort: newest first within same status
+        return b.updatedAt.localeCompare(a.updatedAt)
+      })
+    case 'updatedAt-asc':
+      return sorted.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+    case 'updatedAt-desc':
+    default:
+      return sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  }
+}
+
+const paginateSessions = (
+  sessions: readonly Session[],
+  pageSize: number,
+  pageIndex: number,
+): { page: readonly Session[]; totalPages: number; currentPage: number } => {
+  const totalPages = Math.max(1, Math.ceil(sessions.length / pageSize))
+  const safeIndex = Math.max(0, Math.min(pageIndex, totalPages - 1))
+  const start = safeIndex * pageSize
+  return {
+    page: sessions.slice(start, start + pageSize),
+    totalPages,
+    currentPage: safeIndex + 1,
+  }
 }
 
 const redSessionsPastThreshold = (appState: AppState): readonly Session[] =>
@@ -682,6 +732,65 @@ const renderSession = (session: Session): HTMLElement => {
   )
 
   return card
+}
+
+const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
+  if (sessionCount === 0) return null
+
+  const { totalPages, currentPage } = paginateSessions([], state.pageSize, state.pageIndex)
+
+  return createElement('div', { class: 'session-toolbar' }, [
+    // ── Sort group ──
+    createElement('div', { class: 'session-toolbar__group', role: 'group', 'aria-label': 'Sort sessions' }, [
+      createElement('span', { class: 'session-toolbar__label' }, ['Sort']),
+      createElement('button', {
+        class: `session-toolbar__btn${state.sortMode === 'status' ? ' session-toolbar__btn--active' : ''}`,
+        type: 'button',
+        'data-sort': 'status',
+      }, ['State']),
+      createElement('button', {
+        class: `session-toolbar__btn${state.sortMode === 'updatedAt-desc' ? ' session-toolbar__btn--active' : ''}`,
+        type: 'button',
+        'data-sort': 'updatedAt-desc',
+      }, ['Newest']),
+      createElement('button', {
+        class: `session-toolbar__btn${state.sortMode === 'updatedAt-asc' ? ' session-toolbar__btn--active' : ''}`,
+        type: 'button',
+        'data-sort': 'updatedAt-asc',
+      }, ['Oldest']),
+    ]),
+    // ── Page size group ──
+    createElement('div', { class: 'session-toolbar__group', role: 'group', 'aria-label': 'Sessions per page' }, [
+      createElement('span', { class: 'session-toolbar__label' }, ['Show']),
+      ...([10, 20, 50, 100] as const).map((size) =>
+        createElement('button', {
+          class: `session-toolbar__btn${state.pageSize === size ? ' session-toolbar__btn--active' : ''}`,
+          type: 'button',
+          'data-page-size': String(size),
+        }, [String(size)]),
+      ),
+    ]),
+    // ── Page navigation (only when multi-page) ──
+    ...(totalPages > 1
+      ? [createElement('div', { class: 'session-toolbar__nav' }, [
+          createElement('span', { class: 'session-toolbar__page-info' }, [
+            `Page ${currentPage} of ${totalPages}`,
+          ]),
+          createElement('button', {
+            class: 'session-toolbar__btn',
+            type: 'button',
+            'data-page': 'prev',
+            disabled: state.pageIndex === 0 ? 'true' : undefined,
+          }, ['← Prev']),
+          createElement('button', {
+            class: 'session-toolbar__btn',
+            type: 'button',
+            'data-page': 'next',
+            disabled: state.pageIndex >= totalPages - 1 ? 'true' : undefined,
+          }, ['Next →']),
+        ])]
+      : []),
+  ])
 }
 
 const formatDateLabel = (isoDate: string): string => {
@@ -1611,101 +1720,119 @@ const syncBanner = (): void => {
 
 // Build the body content (everything below the header).  This is the part
 // that gets rebuilt on each 2s refresh cycle.
-const buildBodyContent = (): ReadonlyArray<HTMLElement> => [
-  renderUsage(state.usage),
-  state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
-    createElement('h2', {}, ['Costs by repo']),
-    createElement('p', {}, ['ccusage data is not available.']),
-  ]),
-  createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
-    ...(['finished', 'idle', 'working', 'attention'] as const).map((status) =>
-      createElement('div', { class: `summary__item summary__item--${statusToColor[status]}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
-        createElement('span', {}, [statusLabels[status], state.excludedStates.has(status) ? ' (hidden)' : '']),
-        createElement('strong', {}, [String(state.sessions.filter((session) => {
-          if (session.status !== status) return false
-          if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-          if (isSessionStateExcluded(session)) return false
-          if (state.selectedRepo) {
-            const project = findUsageProject(session, state.usage)
-            return project?.project === state.selectedRepo
-          }
-          return true
-        }).length)]),
-        createElement('button', {
-          class: 'summary__item__exclude',
-          type: 'button',
-          'data-exclude-state': status,
-          'aria-label': state.excludedStates.has(status)
-            ? `Show ${statusLabels[status]} sessions again`
-            : `Hide ${statusLabels[status]} sessions`,
-          title: state.excludedStates.has(status)
-            ? `Show ${statusLabels[status]} sessions again`
-            : `Hide ${statusLabels[status]} sessions from the grid`,
-        }, ['✕']),
-      ]),
+const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
+  // Pre-compute filtered + sorted + paged sessions for the grid
+  const gridEligible = state.sessions.filter((session) => {
+    if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+    if (isSessionStateExcluded(session)) return false
+    if (state.selectedRepo) {
+      const project = findUsageProject(session, state.usage)
+      return project?.project === state.selectedRepo
+    }
+    return true
+  })
+  const sorted = sortSessions(gridEligible, state.sortMode)
+  const { page: pagedSessions, currentPage } = paginateSessions(
+    sorted,
+    state.pageSize,
+    state.pageIndex,
+  )
+  // Clamp pageIndex if it drifted out of bounds after a filter change
+  const safePageIndex = currentPage - 1
+  if (safePageIndex !== state.pageIndex) {
+    state = { ...state, pageIndex: safePageIndex }
+  }
+
+  return [
+    renderUsage(state.usage),
+    state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
+      createElement('h2', {}, ['Costs by repo']),
+      createElement('p', {}, ['ccusage data is not available.']),
+    ]),
+    createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
+      ...(['finished', 'idle', 'working', 'attention'] as const).map((status) =>
+        createElement('div', { class: `summary__item summary__item--${statusToColor[status]}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
+          createElement('span', {}, [statusLabels[status], state.excludedStates.has(status) ? ' (hidden)' : '']),
+          createElement('strong', {}, [String(state.sessions.filter((session) => {
+            if (session.status !== status) return false
+            if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+            if (isSessionStateExcluded(session)) return false
+            if (state.selectedRepo) {
+              const project = findUsageProject(session, state.usage)
+              return project?.project === state.selectedRepo
+            }
+            return true
+          }).length)]),
+          createElement('button', {
+            class: 'summary__item__exclude',
+            type: 'button',
+            'data-exclude-state': status,
+            'aria-label': state.excludedStates.has(status)
+              ? `Show ${statusLabels[status]} sessions again`
+              : `Hide ${statusLabels[status]} sessions`,
+            title: state.excludedStates.has(status)
+              ? `Show ${statusLabels[status]} sessions again`
+              : `Hide ${statusLabels[status]} sessions from the grid`,
+          }, ['✕']),
+        ]),
+      ),
+    ]),
+    ...(() => { const s = renderExcludedStatesSection(); return s ? [s] : [] })(),
+    ...(state.sessions.length === 0
+      ? [createElement('section', { class: 'empty' }, [
+          createElement('h2', {}, ['No sessions registered']),
+          createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
+          createElement('pre', { class: 'empty__snippet' }, [
+            '{\n',
+            '  "hooks": {\n',
+            '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
+            '      "type": "command",\n',
+            '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+            '      "timeout": 5\n',
+            '    }] }],\n',
+            '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
+            '      "type": "command",\n',
+            '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
+            '      "timeout": 5\n',
+            '    }] }]\n',
+            '  }\n',
+            '}',
+          ]),
+          createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
+          createElement('p', {}, ['Or test with curl:']),
+          createElement('pre', { class: 'empty__snippet' }, [
+            'curl -X POST http://localhost:8787/api/sessions \\\n',
+            '  -H "Content-Type: application/json" \\\n',
+            `  -d '{"name":"test","status":"orange"}'`,
+          ]),
+        ])]
+      : [
+          renderSessionToolbar(gridEligible.length) as HTMLElement,
+          createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
+        ].filter((el): el is HTMLElement => el !== null)
     ),
-  ]),
-  ...(() => { const s = renderExcludedStatesSection(); return s ? [s] : [] })(),
-  state.sessions.length === 0
-    ? createElement('section', { class: 'empty' }, [
-        createElement('h2', {}, ['No sessions registered']),
-        createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
-        createElement('pre', { class: 'empty__snippet' }, [
-          '{\n',
-          '  "hooks": {\n',
-          '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
-          '      "type": "command",\n',
-          '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-          '      "timeout": 5\n',
-          '    }] }],\n',
-          '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
-          '      "type": "command",\n',
-          '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-          '      "timeout": 5\n',
-          '    }] }]\n',
-          '  }\n',
-          '}',
-        ]),
-        createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
-        createElement('p', {}, ['Or test with curl:']),
-        createElement('pre', { class: 'empty__snippet' }, [
-          'curl -X POST http://localhost:8787/api/sessions \\\n',
-          '  -H "Content-Type: application/json" \\\n',
-          `  -d '{"name":"test","status":"orange"}'`,
-        ]),
-      ])
-    : createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, state.sessions
-        .filter((session) => {
-          if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
-          if (isSessionStateExcluded(session)) return false
-          if (state.selectedRepo) {
-            const project = findUsageProject(session, state.usage)
-            return project?.project === state.selectedRepo
-          }
-          return true
-        })
-        .map(renderSession)),
-]
+  ]
+}
 
 // Attach event listeners for body content (re-attached after each rebuild).
 const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null }
+      state = { ...state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null, pageIndex: 0 }
       render()
     })
   })
 
   document.querySelectorAll<HTMLElement>('[data-repo]').forEach((card) => {
     card.addEventListener('click', () => {
-      state = { ...state, selectedRepo: card.dataset.repo ?? null }
+      state = { ...state, selectedRepo: card.dataset.repo ?? null, pageIndex: 0 }
       render()
     })
   })
 
   document.querySelectorAll<HTMLButtonElement>('[data-repo-back]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, selectedRepo: null }
+      state = { ...state, selectedRepo: null, pageIndex: 0 }
       render()
     })
   })
@@ -1722,6 +1849,7 @@ const attachBodyEvents = (): void => {
         ...state,
         excludedRepos: next,
         selectedRepo: state.selectedRepo === repo ? null : state.selectedRepo,
+        pageIndex: 0,
       }
       render()
     })
@@ -1734,7 +1862,7 @@ const attachBodyEvents = (): void => {
       const next = new Set(state.excludedRepos)
       next.delete(fullKey)
       saveExcludedRepos(next)
-      state = { ...state, excludedRepos: next }
+      state = { ...state, excludedRepos: next, pageIndex: 0 }
       render()
     })
   })
@@ -1751,7 +1879,7 @@ const attachBodyEvents = (): void => {
         next.add(status)
       }
       saveExcludedStates(next)
-      state = { ...state, excludedStates: next }
+      state = { ...state, excludedStates: next, pageIndex: 0 }
       render()
     })
   })
@@ -1763,7 +1891,43 @@ const attachBodyEvents = (): void => {
       const next = new Set(state.excludedStates)
       next.delete(status)
       saveExcludedStates(next)
-      state = { ...state, excludedStates: next }
+      state = { ...state, excludedStates: next, pageIndex: 0 }
+      render()
+    })
+  })
+
+  // ── Sort mode ──
+  document.querySelectorAll<HTMLButtonElement>('[data-sort]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const sortMode = button.dataset.sort as SortMode
+      state = { ...state, sortMode, pageIndex: 0 }
+      render()
+    })
+  })
+
+  // ── Page size ──
+  document.querySelectorAll<HTMLButtonElement>('[data-page-size]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const pageSize = Number(button.dataset.pageSize)
+      if (Number.isNaN(pageSize) || pageSize <= 0) return
+      state = { ...state, pageSize, pageIndex: 0 }
+      render()
+    })
+  })
+
+  // ── Page navigation ──
+  document.querySelectorAll<HTMLButtonElement>('[data-page="prev"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (state.pageIndex > 0) {
+        state = { ...state, pageIndex: state.pageIndex - 1 }
+        render()
+      }
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-page="next"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state = { ...state, pageIndex: state.pageIndex + 1 }
       render()
     })
   })
