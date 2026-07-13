@@ -451,18 +451,38 @@ export const installHooks = async (
   const targetPath = settingsPath(scope)
   const existing = (await readSettingsJson(targetPath)) ?? {}
 
-  // 4. Merge: preserve existing hooks that are NOT dashboard events
+  // 4. Merge: for each lifecycle event, add the dashboard matcher alongside
+  //    any existing matchers. This preserves non-dashboard hooks (e.g. Claude
+  //    Code's own cleanup hooks) that happen to use the same event names.
   const existingHooks =
     existing.hooks && typeof existing.hooks === 'object' && !Array.isArray(existing.hooks)
       ? (existing.hooks as Record<string, unknown>)
       : {}
 
-  // Remove any previous dashboard entries to avoid duplicates
   for (const event of hookEvents) {
-    delete existingHooks[event]
+    const existingMatchers: unknown[] = Array.isArray(existingHooks[event])
+      ? [...(existingHooks[event] as unknown[])]
+      : []
+
+    // Remove any previous dashboard matchers from this event to avoid
+    // duplicates on re-install (identified by command referencing our script).
+    const withoutDashboard = existingMatchers.filter((matcher) => {
+      if (typeof matcher !== 'object' || matcher === null) return true
+      const entry = matcher as Record<string, unknown>
+      const hookList = entry.hooks
+      if (!Array.isArray(hookList)) return true
+      return !hookList.some((hook) => {
+        if (typeof hook !== 'object' || hook === null) return false
+        const h = hook as Record<string, unknown>
+        return typeof h.command === 'string' && (h.command as string).includes(HOOK_SCRIPT_MATCHER)
+      })
+    })
+
+    // Add the fresh dashboard matcher alongside any existing ones
+    existingHooks[event] = [...withoutDashboard, ...(newHooks[event] as unknown[])]
   }
 
-  const mergedHooks = { ...existingHooks, ...newHooks }
+  const mergedHooks = { ...existingHooks }
   const merged = { ...existing, hooks: mergedHooks }
 
   // 5. Write atomically

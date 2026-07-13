@@ -345,6 +345,43 @@ describe('installHooks and deleteHooks', () => {
     expect(status.events).toContain('SubagentStop')
   })
 
+  it('installHooks preserves existing non-dashboard hooks under the same event', async () => {
+    // Pre-populate settings.json with a user hook under the same event name
+    // that the dashboard also uses (e.g. Stop). This simulates Claude Code
+    // having its own cleanup hook that must survive the dashboard install.
+    const settingsPath = join(tempDir, 'settings.json')
+    await writeFile(settingsPath, JSON.stringify({
+      env: { FOO: 'bar' },
+      hooks: {
+        Stop: [{
+          matcher: '.*',
+          hooks: [{ type: 'command', command: 'rm -rf /tmp/claude-stuff' }],
+        }],
+      },
+    }, null, 2))
+
+    const { installHooks } = await import('../src/hook-settings.js')
+    await installHooks('global', '0.6.0')
+
+    // Read back and verify both hooks coexist
+    const { readFile } = await import('node:fs/promises')
+    const raw = await readFile(settingsPath, 'utf-8')
+    const parsed = JSON.parse(raw)
+
+    // User's hook preserved
+    expect(parsed.env.FOO).toBe('bar')
+    expect(parsed.hooks.Stop).toBeDefined()
+    const matchers = parsed.hooks.Stop
+    expect(matchers).toHaveLength(2) // user matcher + dashboard matcher
+
+    const commands = matchers.flatMap((m: { hooks: { command: string }[] }) =>
+      m.hooks.map((h: { command: string }) => h.command))
+    expect(commands).toContain('rm -rf /tmp/claude-stuff')
+
+    // Dashboard hook also present
+    expect(commands.some((c: string) => c.includes('claude-status-dashboard'))).toBe(true)
+  })
+
   it('deleteHooks removes dashboard hooks but preserves others', async () => {
     // First, create a settings.json with a mix of dashboard and non-dashboard hooks
     const settingsPath = join(tempDir, 'settings.json')
