@@ -9,8 +9,8 @@ COPY tsconfig.json ./
 COPY scripts ./scripts
 COPY src ./src
 COPY public ./public
-RUN mkdir -p dist && echo "${GIT_REF}" > dist/git-ref.txt
-RUN npm run build
+RUN mkdir -p dist
+RUN GIT_REF="${GIT_REF}" npm run build
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

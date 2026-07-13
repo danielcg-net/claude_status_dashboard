@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
@@ -242,6 +242,46 @@ describe('detectHookStatus', () => {
     const status = await detectHookStatus('0.6.0')
     expect(status.installed).toBe(false)
     expect(status.configLocation).toBe('none')
+  })
+
+  it('merges events from both locations when hooks exist in global and project settings', async () => {
+    // Set up global hooks with specific events
+    const globalSettingsPath = join(tempDir, 'settings.json')
+    await writeFile(globalSettingsPath, JSON.stringify({
+      hooks: {
+        SessionStart: [{ matcher: '.*', hooks: [{ type: 'command', command: 'bash /tmp/claude-status-dashboard.sh', timeout: 5 }] }],
+        Stop: [{ matcher: '.*', hooks: [{ type: 'command', command: 'bash /tmp/claude-status-dashboard.sh', timeout: 5 }] }],
+      },
+    }, null, 2))
+
+    // Set up a project directory with its own .claude/settings.json
+    const projectDir = await mkdtemp(join(tmpdir(), 'hooks-project-'))
+    const projectClaudeDir = join(projectDir, '.claude')
+    await mkdir(projectClaudeDir, { recursive: true })
+    await writeFile(join(projectClaudeDir, 'settings.json'), JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [{ matcher: '.*', hooks: [{ type: 'command', command: 'bash /tmp/claude-status-dashboard.sh', timeout: 5 }] }],
+        PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command: 'bash /tmp/claude-status-dashboard.sh', timeout: 5 }] }],
+      },
+    }, null, 2))
+
+    const originalCwd = process.cwd()
+    try {
+      process.chdir(projectDir)
+      const { detectHookStatus } = await import('../src/hook-settings.js')
+      const status = await detectHookStatus('0.6.0')
+
+      expect(status.installed).toBe(true)
+      expect(status.configLocation).toBe('both')
+      // Should include events from BOTH global and project
+      expect(status.events).toContain('SessionStart')
+      expect(status.events).toContain('Stop')
+      expect(status.events).toContain('UserPromptSubmit')
+      expect(status.events).toContain('PreToolUse')
+    } finally {
+      process.chdir(originalCwd)
+      await rm(projectDir, { recursive: true, force: true })
+    }
   })
 
   it('handles corrupt settings.json gracefully', async () => {

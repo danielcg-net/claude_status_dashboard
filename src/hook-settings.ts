@@ -254,6 +254,60 @@ const checkClaudeSettingsForHooks = async (filePath: string): Promise<boolean> =
   return false
 }
 
+/**
+ * Reads a settings.json file and returns the list of hook event names that
+ * reference the dashboard script. Returns an empty array if the file doesn't
+ * exist or has no matching hooks.
+ */
+const readHookEventNames = async (filePath: string): Promise<string[]> => {
+  const settings = await readSettingsJson(filePath)
+  if (!settings?.hooks || typeof settings.hooks !== 'object') return []
+
+  const hooksObj = settings.hooks as Record<string, unknown>
+  const found: string[] = []
+  for (const [event, matchers] of Object.entries(hooksObj)) {
+    if (!Array.isArray(matchers)) continue
+    for (const matcher of matchers) {
+      if (typeof matcher !== 'object' || matcher === null) continue
+      const entry = matcher as Record<string, unknown>
+      const hookList = entry.hooks
+      if (!Array.isArray(hookList)) continue
+      for (const hook of hookList) {
+        if (typeof hook !== 'object' || hook === null) continue
+        const h = hook as Record<string, unknown>
+        if (typeof h.command === 'string' && h.command.includes(HOOK_SCRIPT_MATCHER)) {
+          found.push(event)
+        }
+      }
+    }
+  }
+
+  // Sort to put known lifecycle events first, then any custom ones
+  const knownOrder = hookEvents as readonly string[]
+  found.sort((a, b) => {
+    const ai = knownOrder.indexOf(a)
+    const bi = knownOrder.indexOf(b)
+    if (ai === -1 && bi === -1) return a.localeCompare(b)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+
+  return found
+}
+
+/** Merge and deduplicate two event lists, preserving the order of `a`. */
+const mergeEventLists = (a: string[], b: string[]): string[] => {
+  const seen = new Set(a)
+  for (const item of b) {
+    if (!seen.has(item)) {
+      a.push(item)
+      seen.add(item)
+    }
+  }
+  return a
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -265,6 +319,9 @@ const checkClaudeSettingsForHooks = async (filePath: string): Promise<boolean> =
  * 1. Whether the hook script exists at the install location
  * 2. Whether a global ~/.claude/settings.json has the dashboard hooks
  * 3. Whether a project .claude/settings.json has the dashboard hooks
+ *
+ * When hooks exist in both locations (configLocation = 'both'), events from
+ * both sources are merged so the user sees the full picture.
  */
 export const detectHookStatus = async (version: string): Promise<HookSettings> => {
   const realScriptPath = join(hooksInstallDir(), HOOK_SCRIPT_NAME)
@@ -313,41 +370,15 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
       )
     }
 
-    // Populate events list from whichever location has hooks
-    if (globalHasHooks || projectHasHooks) {
-      const sourcePath = globalHasHooks ? globalPath : projectPath
-      const settings = await readSettingsJson(sourcePath)
-      if (settings?.hooks && typeof settings.hooks === 'object') {
-        const hooksObj = settings.hooks as Record<string, unknown>
-        const found: string[] = []
-        for (const [event, matchers] of Object.entries(hooksObj)) {
-          if (!Array.isArray(matchers)) continue
-          for (const matcher of matchers) {
-            if (typeof matcher !== 'object' || matcher === null) continue
-            const entry = matcher as Record<string, unknown>
-            const hookList = entry.hooks
-            if (!Array.isArray(hookList)) continue
-            for (const hook of hookList) {
-              if (typeof hook !== 'object' || hook === null) continue
-              const h = hook as Record<string, unknown>
-              if (typeof h.command === 'string' && h.command.includes(HOOK_SCRIPT_MATCHER)) {
-                found.push(event)
-              }
-            }
-          }
-        }
-        // Sort to put known lifecycle events first, then any custom ones
-        const knownOrder = hookEvents as readonly string[]
-        found.sort((a, b) => {
-          const ai = knownOrder.indexOf(a)
-          const bi = knownOrder.indexOf(b)
-          if (ai === -1 && bi === -1) return a.localeCompare(b)
-          if (ai === -1) return 1
-          if (bi === -1) return -1
-          return ai - bi
-        })
-        base.events = found
-      }
+    // Populate events list — merge from both locations when hooks exist in both
+    if (base.configLocation === 'both') {
+      const globalEvents = await readHookEventNames(globalPath)
+      const projectEvents = await readHookEventNames(projectPath)
+      base.events = mergeEventLists(globalEvents, projectEvents)
+    } else if (base.configLocation === 'global') {
+      base.events = await readHookEventNames(globalPath)
+    } else if (base.configLocation === 'project') {
+      base.events = await readHookEventNames(projectPath)
     }
 
     base.scriptVersion = base.installed ? version : null

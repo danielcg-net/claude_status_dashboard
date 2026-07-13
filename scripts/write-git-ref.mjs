@@ -5,8 +5,18 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 // this file at runtime (works even inside Docker where .git is absent).
 //
 // Strategy:
-//   1. If we can detect the git branch → always write it (host build).
-//   2. If we can't (Docker build) → keep whatever the host already wrote.
+//   1. If the GIT_REF env var is set (e.g. via Docker build arg), use it.
+//   2. If we can detect the git branch → always write it (host build).
+//   3. If we can't (Docker build, no env var) → keep whatever already exists.
+//   4. Fall back to 'main'.
+
+// Docker build passes GIT_REF as a build arg; use it directly.
+const envRef = process.env.GIT_REF?.trim()
+if (envRef) {
+  writeFileSync('dist/git-ref.txt', `${envRef}\n`, 'utf-8')
+  console.log(`git-ref: ${envRef} (from GIT_REF env)`)
+  process.exit(0)
+}
 
 try {
   const branch = execSync('git rev-parse --abbrev-ref HEAD', {
