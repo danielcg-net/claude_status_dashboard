@@ -1,23 +1,37 @@
 import { execSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
-// Writes the current git branch/ref to a file that gets included in Docker
-// builds, so the server can auto-detect the hooks source even without .git.
+// Writes the current git branch/ref to dist/git-ref.txt.  The server reads
+// this file at runtime (works even inside Docker where .git is absent).
+//
+// Strategy:
+//   1. If we can detect the git branch → always write it (host build).
+//   2. If we can't (Docker build) → keep whatever the host already wrote.
 
-let ref = 'main'
 try {
   const branch = execSync('git rev-parse --abbrev-ref HEAD', {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe'],
   }).trim()
 
-  // Only use branch name if it's not "HEAD" (detached) and not empty
   if (branch && branch !== 'HEAD') {
-    ref = branch
+    writeFileSync('dist/git-ref.txt', `${branch}\n`, 'utf-8')
+    console.log(`git-ref: ${branch}`)
+    process.exit(0)
   }
 } catch {
-  // Not in a git repo or git not available — use 'main'
+  // git not available — fall through to preserve-existing logic
 }
 
-writeFileSync('dist/git-ref.txt', `${ref}\n`, 'utf-8')
-console.log(`git-ref: ${ref}`)
+// Inside Docker (no .git): keep the host-written file if it exists.
+if (existsSync('dist/git-ref.txt')) {
+  const existing = readFileSync('dist/git-ref.txt', 'utf-8').trim()
+  if (existing) {
+    console.log(`git-ref: ${existing} (preserved)`)
+    process.exit(0)
+  }
+}
+
+// Last resort
+writeFileSync('dist/git-ref.txt', 'main\n', 'utf-8')
+console.log('git-ref: main (fallback)')

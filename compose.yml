@@ -1,6 +1,9 @@
 services:
   dashboard:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_REF: "${GIT_REF:-main}"
     container_name: claude-status-dashboard
     ports:
       - "8787:8787"
