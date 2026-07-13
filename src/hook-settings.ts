@@ -161,8 +161,19 @@ export const downloadHookScript = async (version: string): Promise<string> => {
 // settings.json helpers
 // ---------------------------------------------------------------------------
 
-/** Returns the path to a scope's .claude/settings.json. */
-const settingsPath = (scope: 'global' | 'project'): string =>
+/**
+ * Path to settings.local.json — the user-local overrides file that Claude Code
+ * reads at runtime but does not manage. Writing hooks here avoids races with
+ * Claude Code's own settings.json writes.
+ */
+const settingsLocalPath = (scope: 'global' | 'project'): string =>
+  join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.local.json')
+
+/**
+ * Path to settings.json — checked during detection for backward compatibility
+ * with installs from before the switch to settings.local.json.
+ */
+const settingsMainPath = (scope: 'global' | 'project'): string =>
   join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.json')
 
 /**
@@ -366,13 +377,19 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
       base.scriptExists = false
     }
 
-    // Check global settings
-    const globalPath = settingsPath('global')
-    const globalHasHooks = await checkClaudeSettingsForHooks(globalPath, 'global')
+    // Check both settings.json (legacy) and settings.local.json (current)
+    const globalMainPath = settingsMainPath('global')
+    const globalLocalPath = settingsLocalPath('global')
+    const globalHasHooks =
+      (await checkClaudeSettingsForHooks(globalMainPath, 'global')) ||
+      (await checkClaudeSettingsForHooks(globalLocalPath, 'global'))
 
     // Check project settings
-    const projectPath = settingsPath('project')
-    const projectHasHooks = await checkClaudeSettingsForHooks(projectPath, 'project')
+    const projectMainPath = settingsMainPath('project')
+    const projectLocalPath = settingsLocalPath('project')
+    const projectHasHooks =
+      (await checkClaudeSettingsForHooks(projectMainPath, 'project')) ||
+      (await checkClaudeSettingsForHooks(projectLocalPath, 'project'))
 
     if (globalHasHooks && projectHasHooks) {
       base.configLocation = 'both'
@@ -386,24 +403,36 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
     } else {
       console.warn(
         'detectHookStatus: hooks not found in any settings. ' +
-        `global=${prettyPath(globalPath)} (found=${globalHasHooks}), ` +
-        `project=${prettyPath(projectPath)} (found=${projectHasHooks}), ` +
+        `global=${prettyPath(globalMainPath)} (found=${globalHasHooks}), ` +
+        `project=${prettyPath(projectMainPath)} (found=${projectHasHooks}), ` +
         `script=${prettyPath(realScriptPath)} (exists=${base.scriptExists})`,
       )
     }
 
-    // Populate events list — merge from both locations when hooks exist in both.
+    // Populate events list — check both main and local files, merge deduplicated.
     // Wrapped in its own try/catch: an error reading events should not flip
     // `installed` back to false — we already confirmed hooks exist above.
     try {
       if (base.configLocation === 'both') {
-        const globalEvents = await readHookEventNames(globalPath)
-        const projectEvents = await readHookEventNames(projectPath)
+        const globalEvents = mergeEventLists(
+          await readHookEventNames(globalMainPath),
+          await readHookEventNames(globalLocalPath),
+        )
+        const projectEvents = mergeEventLists(
+          await readHookEventNames(projectMainPath),
+          await readHookEventNames(projectLocalPath),
+        )
         base.events = mergeEventLists(globalEvents, projectEvents)
       } else if (base.configLocation === 'global') {
-        base.events = await readHookEventNames(globalPath)
+        base.events = mergeEventLists(
+          await readHookEventNames(globalMainPath),
+          await readHookEventNames(globalLocalPath),
+        )
       } else if (base.configLocation === 'project') {
-        base.events = await readHookEventNames(projectPath)
+        base.events = mergeEventLists(
+          await readHookEventNames(projectMainPath),
+          await readHookEventNames(projectLocalPath),
+        )
       }
     } catch (eventError) {
       const message = eventError instanceof Error ? eventError.message : String(eventError)
@@ -443,7 +472,7 @@ export const installHooks = async (
     newHooks[event] = hookEntry
   }
 
-  const targetPath = settingsPath(scope)
+  const targetPath = settingsLocalPath(scope)
 
   // 3. Read-merge-write-verify loop.  Claude Code may be editing the same
   //    settings.json concurrently; retry with backoff if our write is
@@ -504,33 +533,23 @@ export const installHooks = async (
 }
 
 /**
- * Removes the dashboard hook entries from the chosen scope's settings.json.
- * Scans ALL hook events (not just the 10 predefined lifecycle events) and
- * removes any whose command references the dashboard script. This catches
- * custom event names that users may have added manually.
- * Leaves other hook entries and non-hook settings intact.
- * If the hooks map becomes empty after removal, the `hooks` key is removed.
- * If the file doesn't exist, this is a no-op.
+ * Strips dashboard hooks from a single settings file. Returns true if the
+ * file was modified.
  */
-export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> => {
-  const targetPath = settingsPath(scope)
-  const existing = await readSettingsJson(targetPath)
-
-  if (!existing) return // nothing to delete
+const stripDashboardHooksFromFile = async (filePath: string): Promise<boolean> => {
+  const existing = await readSettingsJson(filePath)
+  if (!existing) return false
 
   const existingHooks =
     existing.hooks && typeof existing.hooks === 'object' && !Array.isArray(existing.hooks)
       ? (existing.hooks as Record<string, unknown>)
       : {}
 
-  // Remove any hook entry whose command references the dashboard script,
-  // regardless of the event name it's registered under.
+  if (Object.keys(existingHooks).length === 0) return false
+
+  let changed = false
   for (const [event, matchers] of Object.entries(existingHooks)) {
     if (!Array.isArray(matchers)) continue
-    // For each matcher, strip dashboard hooks and keep it only if non-dashboard
-    // hooks remain. When a matcher has mixed hooks (dashboard + user hooks),
-    // the matcher is kept but its hooks array is updated to exclude the
-    // dashboard entries.
     const filtered = matchers.reduce<unknown[]>((kept, matcher) => {
       if (typeof matcher !== 'object' || matcher === null) {
         kept.push(matcher)
@@ -539,36 +558,50 @@ export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> =>
       const entry = matcher as Record<string, unknown>
       const hookList = entry.hooks
       if (!Array.isArray(hookList)) {
-        kept.push(matcher) // keep unknown structures
+        kept.push(matcher)
         return kept
       }
-      // Strip dashboard hooks from the hooks array
       const nonDashboard = hookList.filter((hook) => {
-        if (typeof hook !== 'object' || hook === null) return true // keep unknown hooks
+        if (typeof hook !== 'object' || hook === null) return true
         const h = hook as Record<string, unknown>
-        if (typeof h.command !== 'string') return true // keep non-command hooks
+        if (typeof h.command !== 'string') return true
         return !(h.command as string).includes(HOOK_SCRIPT_MATCHER)
       })
-      if (nonDashboard.length === 0) return kept // all hooks were dashboard — skip matcher
-      // Replace hooks with only the non-dashboard entries
+      if (nonDashboard.length === 0) { changed = true; return kept }
+      if (nonDashboard.length !== hookList.length) changed = true
       kept.push({ ...entry, hooks: nonDashboard })
       return kept
     }, [])
     if (filtered.length === 0) {
       delete existingHooks[event]
+      changed = true
     } else {
       existingHooks[event] = filtered
     }
   }
 
+  if (!changed) return false
+
   const remainingKeys = Object.keys(existingHooks)
   const merged = { ...existing }
-
   if (remainingKeys.length === 0) {
     delete merged.hooks
   } else {
     merged.hooks = existingHooks
   }
 
-  await writeSettingsJson(targetPath, merged)
+  await writeSettingsJson(filePath, merged)
+  return true
+}
+
+/**
+ * Removes the dashboard hook entries from the chosen scope's settings.
+ * Cleans both settings.local.json (current) and settings.json (legacy installs).
+ * Scans ALL hook events (not just the 10 predefined lifecycle events) and
+ * removes any whose command references the dashboard script.
+ * Leaves other hook entries and non-hook settings intact.
+ */
+export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> => {
+  await stripDashboardHooksFromFile(settingsLocalPath(scope))
+  await stripDashboardHooksFromFile(settingsMainPath(scope))
 }
