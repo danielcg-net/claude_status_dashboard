@@ -416,7 +416,6 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     10,
   )
   let hooksWereInstalled = false
-  let hooksLastScope: 'global' | 'project' = 'global'
   const hooksHealthTimer = setInterval(async () => {
     const status = await detectHookStatus(getVersion())
     if (status.installed) {
