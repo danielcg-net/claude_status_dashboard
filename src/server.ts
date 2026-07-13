@@ -401,6 +401,30 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     }
   }, 60_000)
 
+  // Periodically check that hooks haven't been overwritten by another process
+  // (e.g. Claude Code restoring its own settings.json state). Logs a warning
+  // so the user knows to re-install.
+  const hooksHealthIntervalMs = Number.parseInt(
+    process.env.HOOKS_HEALTH_CHECK_INTERVAL_MS ?? '300000',
+    10,
+  )
+  let hooksWereInstalled = false
+  const hooksHealthTimer = setInterval(async () => {
+    const status = await detectHookStatus(getVersion())
+    if (status.installed) {
+      hooksWereInstalled = true
+      return
+    }
+    if (hooksWereInstalled && !status.installed) {
+      console.warn(
+        'hooks health check: dashboard hooks have been removed from settings. ' +
+        `(global=${status.configLocation === 'none' ? 'missing' : status.configLocation}) ` +
+        'Another process (e.g. Claude Code) may have overwritten them. Reinstall from the Hooks panel.',
+      )
+      hooksWereInstalled = false
+    }
+  }, hooksHealthIntervalMs)
+
   const server = serve(
     {
       fetch: app.fetch,
@@ -415,6 +439,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
   const shutdown = (): void => {
     clearInterval(evictTimer)
     clearInterval(staleTimer)
+    clearInterval(hooksHealthTimer)
     // Stop accepting new connections; wait for open connections to drain,
     // then flush pending saves before exiting.
     const serverClosed = new Promise<void>((resolve) => server.on('close', resolve))
