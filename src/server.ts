@@ -91,6 +91,9 @@ const versionCheckUrl = process.env.VERSION_CHECK_URL ?? 'https://raw.githubuser
 const versionCheckTtlMs = Number.parseInt(process.env.VERSION_CHECK_TTL_MS ?? '3600000', 10)
 const versionCheckEnabled = (process.env.VERSION_CHECK_ENABLED ?? 'true') !== 'false'
 let versionCache: { readonly expiresAt: number; readonly latestVersion: string | null } | null = null
+// Set by the hooks API handler to suppress the health-check warning when the
+// user intentionally deletes hooks via the panel.
+let hooksDeletedViaPanel = false
 
 // Serializes all writes: each save reads state.sessions at execution time so it
 // always reflects the latest in-memory state even when multiple mutations queue up.
@@ -301,9 +304,11 @@ app.put('/api/settings/hooks', async (context) => {
 
   try {
     if (input.action === 'install') {
+      hooksDeletedViaPanel = false
       await installHooks(input.scope, downloadRef)
     } else {
       await deleteHooks(input.scope)
+      hooksDeletedViaPanel = true
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -413,16 +418,18 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     const status = await detectHookStatus(getVersion())
     if (status.installed) {
       hooksWereInstalled = true
+      hooksDeletedViaPanel = false
       return
     }
-    if (hooksWereInstalled && !status.installed) {
+    if (hooksWereInstalled && !hooksDeletedViaPanel) {
       console.warn(
         'hooks health check: dashboard hooks have been removed from settings. ' +
         `(global=${status.configLocation === 'none' ? 'missing' : status.configLocation}) ` +
         'Another process (e.g. Claude Code) may have overwritten them. Reinstall from the Hooks panel.',
       )
-      hooksWereInstalled = false
     }
+    hooksWereInstalled = false
+    hooksDeletedViaPanel = false
   }, hooksHealthIntervalMs)
 
   const server = serve(

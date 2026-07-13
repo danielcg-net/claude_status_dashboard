@@ -479,10 +479,12 @@ const createElement = <K extends keyof HTMLElementTagNameMap>(
 // ── Toast notification ──────────────────────────────────────────────
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let toastFallbackTimer: ReturnType<typeof setTimeout> | null = null
 
 const showToast = (message: string, type: 'success' | 'error', durationMs: number = 3500): void => {
-  // Remove any existing toast
+  // Clear any pending timers from a previous toast
   if (toastTimer !== null) clearTimeout(toastTimer)
+  if (toastFallbackTimer !== null) clearTimeout(toastFallbackTimer)
   const existing = document.querySelector('.toast')
   if (existing) existing.remove()
 
@@ -496,9 +498,7 @@ const showToast = (message: string, type: 'success' | 'error', durationMs: numbe
     toast.classList.remove('toast--visible')
     toast.addEventListener('transitionend', () => toast.remove(), { once: true })
     // Fallback: remove after transition duration if transitionend didn't fire.
-    // Don't store this in toastTimer — it would clobber the next toast's
-    // primary timer. clearTimeout on a completed timer is a no-op anyway.
-    setTimeout(() => { toast.remove() }, 350)
+    toastFallbackTimer = setTimeout(() => { toast.remove() }, 350)
   }, durationMs)
 }
 
@@ -1820,13 +1820,12 @@ const buildHooksPanel = (s: HooksSettingsUI): HTMLElement => {
         class: 'hooks-panel__btn hooks-panel__btn--primary',
         type: 'button',
       }, ['Install / Update Hooks']),
-      ...(s.installed ? [
-        createElement('button', {
-          id: 'hooks-delete',
-          class: 'hooks-panel__btn hooks-panel__btn--danger',
-          type: 'button',
-        }, ['Delete Hooks']),
-      ] : []),
+      createElement('button', {
+        id: 'hooks-delete',
+        class: 'hooks-panel__btn hooks-panel__btn--danger',
+        type: 'button',
+        style: s.installed ? '' : 'display: none',
+      }, ['Delete Hooks']),
     ]),
   ]
 
@@ -1845,35 +1844,10 @@ const syncHooksPanelFields = (panel: HTMLElement, s: HooksSettingsUI): void => {
     b1.className = s.scriptExists ? 'hooks-panel__badge hooks-panel__badge--ok' : 'hooks-panel__badge hooks-panel__badge--warn'
   }
 
-  // Show/hide delete button
+  // Toggle delete button visibility
   const deleteBtn = panel.querySelector<HTMLButtonElement>('#hooks-delete')
   if (deleteBtn) {
     deleteBtn.style.display = s.installed ? '' : 'none'
-  } else if (s.installed) {
-    // Button doesn't exist but should — create it dynamically to avoid
-    // a full panel rebuild (which would cause visual flicker).
-    const actions = panel.querySelector<HTMLElement>('.hooks-panel__actions')
-    if (actions) {
-      const newBtn = createElement('button', {
-        id: 'hooks-delete',
-        class: 'hooks-panel__btn hooks-panel__btn--danger',
-        type: 'button',
-      }, ['Delete Hooks'])
-      actions.append(newBtn)
-      // Attach click handler for the new button
-      newBtn.addEventListener('click', async () => {
-        const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
-        try {
-          const updated = await saveHookSettings({ action: 'delete', scope })
-          state = { ...state, hooksSettings: updated }
-          showToast('Hooks deleted', 'success')
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          showToast(`Failed to delete hooks: ${message}`, 'error')
-        }
-        render()
-      })
-    }
   }
 
   // Show/hide error
