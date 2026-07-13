@@ -1787,7 +1787,7 @@ const buildHooksPanel = (s: HooksSettingsUI): HTMLElement => {
       ...(s.scriptVersion ? [
         createElement('div', { class: 'hooks-panel__status-row' }, [
           createElement('span', { class: 'hooks-panel__label' }, ['Version:']),
-          createElement('code', {}, [`v${s.scriptVersion}`]),
+          createElement('code', {}, [s.scriptVersion]),
         ]),
       ] : []),
       ...(s.error ? [
