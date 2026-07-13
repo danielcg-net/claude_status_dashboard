@@ -224,19 +224,35 @@ const buildHookEntry = (scriptPath: string) => [
  * Looks for any hook event whose command references the dashboard script
  * (claude-status-dashboard.sh), regardless of how many events are configured.
  */
-const checkClaudeSettingsForHooks = async (filePath: string): Promise<boolean> => {
+const checkClaudeSettingsForHooks = async (
+  filePath: string,
+  logLabel?: string,
+): Promise<boolean> => {
+  const label = logLabel ?? filePath
   const settings = await readSettingsJson(filePath)
-  if (!settings) return false
+  if (!settings) {
+    console.warn(`checkHooks(${label}): file missing or unreadable`)
+    return false
+  }
 
   const hooks = settings.hooks
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return false
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) {
+    console.warn(`checkHooks(${label}): no hooks object found (type=${typeof hooks}, isArray=${Array.isArray(hooks)})`)
+    return false
+  }
 
   const hooksObj = hooks as Record<string, unknown>
+  const eventNames = Object.keys(hooksObj)
+  if (eventNames.length === 0) {
+    console.warn(`checkHooks(${label}): hooks object is empty`)
+    return false
+  }
 
   // Walk every event and every matcher/hook entry looking for a command
   // that references our script. This catches partial installs (e.g. only
   // SessionStart + Stop) as well as full 10-event installs.
-  for (const event of Object.keys(hooksObj)) {
+  const commandsSeen: string[] = []
+  for (const event of eventNames) {
     const matchers = hooksObj[event]
     if (!Array.isArray(matchers)) continue
     for (const matcher of matchers) {
@@ -247,13 +263,20 @@ const checkClaudeSettingsForHooks = async (filePath: string): Promise<boolean> =
       for (const hook of hookList) {
         if (typeof hook !== 'object' || hook === null) continue
         const h = hook as Record<string, unknown>
-        if (typeof h.command === 'string' && h.command.includes(HOOK_SCRIPT_MATCHER)) {
-          return true
+        if (typeof h.command === 'string') {
+          commandsSeen.push(h.command)
+          if (h.command.includes(HOOK_SCRIPT_MATCHER)) {
+            return true
+          }
         }
       }
     }
   }
 
+  console.warn(
+    `checkHooks(${label}): ${eventNames.length} event(s) with ${commandsSeen.length} command(s), ` +
+    `none matching "${HOOK_SCRIPT_MATCHER}". Commands: ${JSON.stringify(commandsSeen.slice(0, 5))}`,
+  )
   return false
 }
 
@@ -349,11 +372,11 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
 
     // Check global settings
     const globalPath = settingsPath('global')
-    const globalHasHooks = await checkClaudeSettingsForHooks(globalPath)
+    const globalHasHooks = await checkClaudeSettingsForHooks(globalPath, 'global')
 
     // Check project settings
     const projectPath = settingsPath('project')
-    const projectHasHooks = await checkClaudeSettingsForHooks(projectPath)
+    const projectHasHooks = await checkClaudeSettingsForHooks(projectPath, 'project')
 
     if (globalHasHooks && projectHasHooks) {
       base.configLocation = 'both'
