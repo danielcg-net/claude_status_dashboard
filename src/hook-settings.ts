@@ -234,7 +234,7 @@ const checkClaudeSettingsForHooks = async (
   filePath: string,
   logLabel?: string,
 ): Promise<boolean> => {
-  const label = logLabel ?? filePath
+  const label = logLabel ?? 'settings'
   const settings = await readSettingsJson(filePath)
   if (!settings) return false // file doesn't exist — expected, not an error
 
@@ -513,7 +513,7 @@ export const installHooks = async (
     await writeSettingsJson(targetPath, merged)
 
     // Verify the write stuck — re-read and check for our hooks
-    if (await checkClaudeSettingsForHooks(targetPath)) return
+    if (await checkClaudeSettingsForHooks(targetPath, 'settings')) return
 
     // Overwritten — wait with jittered backoff, then retry with fresh state
     if (attempt < 4) {

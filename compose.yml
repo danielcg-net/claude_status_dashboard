@@ -19,9 +19,10 @@ services:
       CLAUDE_CONFIG_DIR: "/claude"
       DATA_DIR: "/data"
       SESSION_TTL_MS: "604800000"
-      # Project-scope hook settings persist only when CLAUDE_PROJECT_CONFIG_DIR
-      # points to a mounted volume. Uncomment and add a matching volume mount if
-      # you install hooks at project scope and want them to survive restarts.
+      # Project-scope settings are written to .claude/ relative to the container
+      # working directory and are NOT persistent without a bind mount. Set
+      # CLAUDE_PROJECT_CONFIG_DIR to a mounted volume path if you install project-
+      # scope hooks and want them to survive container restarts.
       # CLAUDE_PROJECT_CONFIG_DIR: "/project-claude"
       # ---- Webhook notifications (set values in .env, see .env.example) ----
       NOTIFY_WEBHOOK_URL: "${NOTIFY_WEBHOOK_URL}"
