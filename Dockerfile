@@ -21,4 +21,7 @@ RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 EXPOSE 8787
+# Run as root so volume mounts (~/.claude, ~/.claude-status-dashboard)
+# are writable regardless of the host user's UID.
+USER root
 CMD ["node", "dist/server.js"]

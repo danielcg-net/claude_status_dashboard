@@ -1848,13 +1848,30 @@ const syncHooksPanelFields = (panel: HTMLElement, s: HooksSettingsUI): void => {
   if (deleteBtn) {
     deleteBtn.style.display = s.installed ? '' : 'none'
   } else if (s.installed) {
-    // Button doesn't exist but should — rebuild panel in-place
-    const newPanel = buildHooksPanel(s)
-    panel.replaceWith(newPanel)
-    hooksPanelEl = newPanel
-    attachHooksPanelEvents()
-    // New panel has all fields up-to-date; skip remaining sync
-    return
+    // Button doesn't exist but should — create it dynamically to avoid
+    // a full panel rebuild (which would cause visual flicker).
+    const actions = panel.querySelector<HTMLElement>('.hooks-panel__actions')
+    if (actions) {
+      const newBtn = createElement('button', {
+        id: 'hooks-delete',
+        class: 'hooks-panel__btn hooks-panel__btn--danger',
+        type: 'button',
+      }, ['Delete Hooks'])
+      actions.append(newBtn)
+      // Attach click handler for the new button
+      newBtn.addEventListener('click', async () => {
+        const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
+        try {
+          const updated = await saveHookSettings({ action: 'delete', scope })
+          state = { ...state, hooksSettings: updated }
+          showToast('Hooks deleted', 'success')
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          showToast(`Failed to delete hooks: ${message}`, 'error')
+        }
+        render()
+      })
+    }
   }
 
   // Show/hide error
@@ -2313,6 +2330,18 @@ const refreshVersion = async (): Promise<void> => {
   }
 }
 
+const refreshHooks = async (): Promise<void> => {
+  try {
+    const settings = await loadHookSettings()
+    if (JSON.stringify(settings) !== JSON.stringify(state.hooksSettings)) {
+      state = { ...state, hooksSettings: settings }
+      render()
+    }
+  } catch (error) {
+    console.error('Failed to refresh hooks status:', error)
+  }
+}
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext
@@ -2356,4 +2385,5 @@ void refreshUsage()
 void refreshVersion()
 window.setInterval(() => void refresh(), 2_000)
 window.setInterval(() => void refreshUsage(), 30_000)
+window.setInterval(() => void refreshHooks(), 30_000)
 window.setInterval(() => void refreshVersion(), 1_800_000)

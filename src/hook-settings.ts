@@ -48,8 +48,12 @@ export const hookEvents = [
   'SubagentStop',
 ] as const
 
-/** GitHub raw URL template for downloading the hook script from a release. */
-const RAW_URL = 'https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard'
+/**
+ * Base URL for downloading the hook script from a GitHub release.
+ * Override HOOKS_REPO to use a fork: e.g. "my-org/my-fork".
+ */
+const HOOKS_REPO = process.env.HOOKS_REPO ?? 'danielcg-net/claude_status_dashboard'
+const RAW_URL = `https://raw.githubusercontent.com/${HOOKS_REPO}`
 
 /**
  * Claude config directory. Respects CLAUDE_CONFIG_DIR (used in Docker
@@ -300,6 +304,13 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
     } else if (projectHasHooks) {
       base.configLocation = 'project'
       base.installed = true
+    } else {
+      console.warn(
+        'detectHookStatus: hooks not found in any settings. ' +
+        `global=${prettyPath(globalPath)} (found=${globalHasHooks}), ` +
+        `project=${prettyPath(projectPath)} (found=${projectHasHooks}), ` +
+        `script=${prettyPath(realScriptPath)} (exists=${base.scriptExists})`,
+      )
     }
 
     // Populate events list from whichever location has hooks
@@ -343,7 +354,9 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
 
     return base
   } catch (error) {
-    base.error = error instanceof Error ? error.message : String(error)
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('detectHookStatus: error during detection:', message)
+    base.error = message
     return base
   }
 }
@@ -392,6 +405,9 @@ export const installHooks = async (
 
 /**
  * Removes the dashboard hook entries from the chosen scope's settings.json.
+ * Scans ALL hook events (not just the 10 predefined lifecycle events) and
+ * removes any whose command references the dashboard script. This catches
+ * custom event names that users may have added manually.
  * Leaves other hook entries and non-hook settings intact.
  * If the hooks map becomes empty after removal, the `hooks` key is removed.
  * If the file doesn't exist, this is a no-op.
@@ -407,9 +423,31 @@ export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> =>
       ? (existing.hooks as Record<string, unknown>)
       : {}
 
-  // Remove dashboard hook entries
-  for (const event of hookEvents) {
-    delete existingHooks[event]
+  // Remove any hook entry whose command references the dashboard script,
+  // regardless of the event name it's registered under.
+  for (const [event, matchers] of Object.entries(existingHooks)) {
+    if (!Array.isArray(matchers)) continue
+    // Filter out matchers whose hooks reference our script
+    const filtered = matchers.filter((matcher) => {
+      if (typeof matcher !== 'object' || matcher === null) return true // keep unknown structures
+      const entry = matcher as Record<string, unknown>
+      const hookList = entry.hooks
+      if (!Array.isArray(hookList)) return true // keep unknown structures
+      // Remove matchers where ALL hooks reference our script
+      const nonDashboard = hookList.filter((hook) => {
+        if (typeof hook !== 'object' || hook === null) return true // keep unknown hooks
+        const h = hook as Record<string, unknown>
+        if (typeof h.command !== 'string') return true // keep non-command hooks
+        return !h.command.includes(HOOK_SCRIPT_MATCHER)
+      })
+      // If no non-dashboard hooks remain, remove this matcher
+      return nonDashboard.length > 0
+    })
+    if (filtered.length === 0) {
+      delete existingHooks[event]
+    } else {
+      existingHooks[event] = filtered
+    }
   }
 
   const remainingKeys = Object.keys(existingHooks)

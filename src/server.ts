@@ -60,16 +60,20 @@ const staticRoot = fileURLToPath(new URL('../public', import.meta.url))
 //   1. dist/git-ref.txt  (generated at build time, works in Docker)
 //   2. git rev-parse      (works in dev with tsx watch)
 //   3. 'main'             (fallback)
+// Result is cached — the git ref cannot change at runtime.
+let cachedHookRef: string | null = null
 const getHookRef = (): string => {
+  if (cachedHookRef !== null) return cachedHookRef
   try {
     const ref = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), 'git-ref.txt'), 'utf-8').trim()
-    if (ref) return ref
+    if (ref) { cachedHookRef = ref; return cachedHookRef }
   } catch { /* not found */ }
   try {
     const ref = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
-    if (ref && ref !== 'HEAD') return ref
+    if (ref && ref !== 'HEAD') { cachedHookRef = ref; return cachedHookRef }
   } catch { /* git not available or not in a repo */ }
-  return 'main'
+  cachedHookRef = 'main'
+  return cachedHookRef
 }
 const port = Number.parseInt(process.env.PORT ?? '8787', 10)
 const hostname = process.env.HOST ?? '0.0.0.0'
@@ -287,12 +291,13 @@ app.put('/api/settings/hooks', async (context) => {
     }
     throw error
   }
-  // Auto-detect: HOOKS_VERSION > build-time ref > runtime git > 'main'
-  const version = process.env.HOOKS_VERSION ?? getHookRef()
+  // Download ref: HOOKS_VERSION > build-time ref > runtime git > 'main'
+  // (determines which git ref to pull the hook script from — not the package version)
+  const downloadRef = process.env.HOOKS_VERSION ?? getHookRef()
 
   try {
     if (input.action === 'install') {
-      await installHooks(input.scope, version)
+      await installHooks(input.scope, downloadRef)
     } else {
       await deleteHooks(input.scope)
     }
@@ -302,7 +307,8 @@ app.put('/api/settings/hooks', async (context) => {
     throw new HTTPException(500, { message })
   }
 
-  const status = await detectHookStatus(version)
+  // Report status with the package version (consistent with GET)
+  const status = await detectHookStatus(getVersion())
   return context.json(status)
 })
 
