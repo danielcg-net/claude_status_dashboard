@@ -53,7 +53,12 @@ const statusFor = () => {
   if (event === 'Notification' || event === 'PermissionRequest' || event === 'Elicitation') return 'attention'
   if (event === 'Stop' || event === 'SubagentStop') return 'finished'
   if (event === 'StopFailure') return 'attention'
-  if (event === 'SessionStart' || event === 'UserPromptSubmit') return 'idle'
+  if (event === 'SessionStart') return 'idle'
+  // UserPromptSubmit means the user just sent a prompt — Claude is about to
+  // start working.  Keeping 'idle' here would stall the transition so the
+  // next PreToolUse→'working' fires 'working', making it look like the idle
+  // notification fired on the idle→running boundary.
+  if (event === 'UserPromptSubmit') return 'working'
   return 'working'
 }
 
