@@ -737,7 +737,9 @@ const renderSession = (session: Session): HTMLElement => {
 const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
   if (sessionCount === 0) return null
 
-  const { totalPages, currentPage } = paginateSessions([], state.pageSize, state.pageIndex)
+  const totalPages = Math.max(1, Math.ceil(sessionCount / state.pageSize))
+  const safeIndex = Math.min(state.pageIndex, totalPages - 1)
+  const currentPage = safeIndex + 1
 
   return createElement('div', { class: 'session-toolbar' }, [
     // ── Sort group ──
