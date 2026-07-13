@@ -414,6 +414,7 @@ if (isMain || process.env.NODE_ENV !== 'test') {
       enqueueSave()
       for (const s of autoIdled) {
         console.log(`Auto-idled stale session: ${s.id} (${s.name}) — last update was at ${s.updatedAt}`)
+        notify(s.status, s)
       }
     }
   }, 60_000)
