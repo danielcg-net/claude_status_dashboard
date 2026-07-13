@@ -230,23 +230,19 @@ const checkClaudeSettingsForHooks = async (
 ): Promise<boolean> => {
   const label = logLabel ?? filePath
   const settings = await readSettingsJson(filePath)
-  if (!settings) {
-    console.warn(`checkHooks(${label}): file missing or unreadable`)
-    return false
-  }
+  if (!settings) return false // file doesn't exist — expected, not an error
 
   const hooks = settings.hooks
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) {
+    // Only warn if the file actually had content but no hooks object —
+    // this means the file exists but hooks are structured unexpectedly.
     console.warn(`checkHooks(${label}): no hooks object found (type=${typeof hooks}, isArray=${Array.isArray(hooks)})`)
     return false
   }
 
   const hooksObj = hooks as Record<string, unknown>
   const eventNames = Object.keys(hooksObj)
-  if (eventNames.length === 0) {
-    console.warn(`checkHooks(${label}): hooks object is empty`)
-    return false
-  }
+  if (eventNames.length === 0) return false // empty hooks — not an error
 
   // Walk every event and every matcher/hook entry looking for a command
   // that references our script. This catches partial installs (e.g. only
