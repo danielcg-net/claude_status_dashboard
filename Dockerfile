@@ -21,7 +21,8 @@ RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 EXPOSE 8787
-# Run as root so volume mounts (~/.claude, ~/.claude-status-dashboard)
-# are writable regardless of the host user's UID.
-USER root
+# Default to the 'node' user (UID 1000). When the host user has a different
+# UID, override with `user: "${UID}:${GID}"` in compose.yml or `--user` at
+# runtime so that files written to bind mounts are owned by the host user.
+USER node
 CMD ["node", "dist/server.js"]

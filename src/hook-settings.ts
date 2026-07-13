@@ -161,20 +161,16 @@ export const downloadHookScript = async (version: string): Promise<string> => {
 // settings.json helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Path to settings.local.json — the user-local overrides file that Claude Code
- * reads at runtime but does not manage. Writing hooks here avoids races with
- * Claude Code's own settings.json writes.
- */
-const settingsLocalPath = (scope: 'global' | 'project'): string =>
-  join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.local.json')
+/** Primary path: the dashboard's hooks live in settings.json. */
+const settingsPath = (scope: 'global' | 'project'): string =>
+  join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.json')
 
 /**
- * Path to settings.json — checked during detection for backward compatibility
- * with installs from before the switch to settings.local.json.
+ * Legacy path — checked during detection for installs from the short-lived
+ * settings.local.json experiment. Also cleaned up by deleteHooks.
  */
-const settingsMainPath = (scope: 'global' | 'project'): string =>
-  join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.json')
+const settingsLegacyLocalPath = (scope: 'global' | 'project'): string =>
+  join(scope === 'global' ? claudeHomeDir() : projectClaudeDir(), 'settings.local.json')
 
 /**
  * Reads and parses a settings.json file. Returns `null` when the file does not
@@ -220,7 +216,6 @@ const buildHookEntry = (scriptPath: string) => [
       {
         type: 'command',
         command: `bash ${scriptPath}`,
-        timeout: 5,
       },
     ],
   },
@@ -377,19 +372,19 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
       base.scriptExists = false
     }
 
-    // Check both settings.json (legacy) and settings.local.json (current)
-    const globalMainPath = settingsMainPath('global')
-    const globalLocalPath = settingsLocalPath('global')
+    // Check settings.json (current) and settings.local.json (legacy cleanup)
+    const globalPath = settingsPath('global')
+    const globalLegacyPath = settingsLegacyLocalPath('global')
     const globalHasHooks =
-      (await checkClaudeSettingsForHooks(globalMainPath, 'global')) ||
-      (await checkClaudeSettingsForHooks(globalLocalPath, 'global'))
+      (await checkClaudeSettingsForHooks(globalPath, 'global')) ||
+      (await checkClaudeSettingsForHooks(globalLegacyPath, 'global'))
 
     // Check project settings
-    const projectMainPath = settingsMainPath('project')
-    const projectLocalPath = settingsLocalPath('project')
+    const projectPath = settingsPath('project')
+    const projectLegacyPath = settingsLegacyLocalPath('project')
     const projectHasHooks =
-      (await checkClaudeSettingsForHooks(projectMainPath, 'project')) ||
-      (await checkClaudeSettingsForHooks(projectLocalPath, 'project'))
+      (await checkClaudeSettingsForHooks(projectPath, 'project')) ||
+      (await checkClaudeSettingsForHooks(projectLegacyPath, 'project'))
 
     if (globalHasHooks && projectHasHooks) {
       base.configLocation = 'both'
@@ -403,8 +398,8 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
     } else {
       console.warn(
         'detectHookStatus: hooks not found in any settings. ' +
-        `global=${prettyPath(globalMainPath)} (found=${globalHasHooks}), ` +
-        `project=${prettyPath(projectMainPath)} (found=${projectHasHooks}), ` +
+        `global=${prettyPath(globalPath)} (found=${globalHasHooks}), ` +
+        `project=${prettyPath(projectPath)} (found=${projectHasHooks}), ` +
         `script=${prettyPath(realScriptPath)} (exists=${base.scriptExists})`,
       )
     }
@@ -415,23 +410,23 @@ export const detectHookStatus = async (version: string): Promise<HookSettings> =
     try {
       if (base.configLocation === 'both') {
         const globalEvents = mergeEventLists(
-          await readHookEventNames(globalMainPath),
-          await readHookEventNames(globalLocalPath),
+          await readHookEventNames(globalPath),
+          await readHookEventNames(globalLegacyPath),
         )
         const projectEvents = mergeEventLists(
-          await readHookEventNames(projectMainPath),
-          await readHookEventNames(projectLocalPath),
+          await readHookEventNames(projectPath),
+          await readHookEventNames(projectLegacyPath),
         )
         base.events = mergeEventLists(globalEvents, projectEvents)
       } else if (base.configLocation === 'global') {
         base.events = mergeEventLists(
-          await readHookEventNames(globalMainPath),
-          await readHookEventNames(globalLocalPath),
+          await readHookEventNames(globalPath),
+          await readHookEventNames(globalLegacyPath),
         )
       } else if (base.configLocation === 'project') {
         base.events = mergeEventLists(
-          await readHookEventNames(projectMainPath),
-          await readHookEventNames(projectLocalPath),
+          await readHookEventNames(projectPath),
+          await readHookEventNames(projectLegacyPath),
         )
       }
     } catch (eventError) {
@@ -472,7 +467,7 @@ export const installHooks = async (
     newHooks[event] = hookEntry
   }
 
-  const targetPath = settingsLocalPath(scope)
+  const targetPath = settingsPath(scope)
 
   // 3. Read-merge-write-verify loop.  Claude Code may be editing the same
   //    settings.json concurrently; retry with backoff if our write is
@@ -600,6 +595,6 @@ const stripDashboardHooksFromFile = async (filePath: string): Promise<boolean> =
  * Leaves other hook entries and non-hook settings intact.
  */
 export const deleteHooks = async (scope: 'global' | 'project'): Promise<void> => {
-  await stripDashboardHooksFromFile(settingsLocalPath(scope))
-  await stripDashboardHooksFromFile(settingsMainPath(scope))
+  await stripDashboardHooksFromFile(settingsPath(scope))
+  await stripDashboardHooksFromFile(settingsLegacyLocalPath(scope))
 }

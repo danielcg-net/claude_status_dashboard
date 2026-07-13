@@ -345,10 +345,9 @@ describe('installHooks and deleteHooks', () => {
     expect(status.events).toContain('SubagentStop')
   })
 
-  it('installHooks preserves existing non-dashboard hooks in settings.json', async () => {
+  it('installHooks preserves existing non-dashboard hooks under the same event', async () => {
     // Pre-populate settings.json with a user hook under the same event name
-    // that the dashboard also uses (e.g. Stop). Dashboard hooks are written to
-    // settings.local.json, so settings.json should be left untouched.
+    // that the dashboard also uses (e.g. Stop). Both hooks should coexist.
     const mainPath = join(tempDir, 'settings.json')
     await writeFile(mainPath, JSON.stringify({
       env: { FOO: 'bar' },
@@ -364,24 +363,18 @@ describe('installHooks and deleteHooks', () => {
     await installHooks('global', '0.6.0')
 
     const { readFile } = await import('node:fs/promises')
-
-    // settings.json unchanged — user hook still there
     const mainRaw = await readFile(mainPath, 'utf-8')
     const mainParsed = JSON.parse(mainRaw)
-    expect(mainParsed.env.FOO).toBe('bar')
-    expect(mainParsed.hooks.Stop).toHaveLength(1)
-    expect(mainParsed.hooks.Stop[0].hooks[0].command).toBe('rm -rf /tmp/claude-stuff')
 
-    // settings.local.json has the dashboard hooks
-    const localPath = join(tempDir, 'settings.local.json')
-    const localRaw = await readFile(localPath, 'utf-8')
-    const localParsed = JSON.parse(localRaw)
-    expect(localParsed.hooks.Stop).toBeDefined()
-    expect(localParsed.hooks.SessionStart).toBeDefined()
-    const stopCommands = localParsed.hooks.Stop.flatMap(
+    // Non-hook settings preserved
+    expect(mainParsed.env.FOO).toBe('bar')
+    // Both matchers coexist under Stop: user's rm -rf + dashboard hook
+    expect(mainParsed.hooks.Stop).toHaveLength(2)
+    const commands = mainParsed.hooks.Stop.flatMap(
       (m: { hooks: { command: string }[] }) => m.hooks.map((h: { command: string }) => h.command),
     )
-    expect(stopCommands.some((c: string) => c.includes('claude-status-dashboard'))).toBe(true)
+    expect(commands).toContain('rm -rf /tmp/claude-stuff')
+    expect(commands.some((c: string) => c.includes('claude-status-dashboard'))).toBe(true)
   })
 
   it('deleteHooks removes dashboard hooks but preserves others', async () => {
@@ -474,7 +467,7 @@ describe('installHooks and deleteHooks', () => {
     await deleteHooks('global')
   })
 
-  it('installHooks writes to settings.local.json leaving settings.json intact', async () => {
+  it('installHooks writes hooks to settings.json alongside existing settings', async () => {
     const mainPath = join(tempDir, 'settings.json')
     await writeFile(mainPath, JSON.stringify({
       env: { FOO: 'bar' },
@@ -485,19 +478,14 @@ describe('installHooks and deleteHooks', () => {
     await installHooks('global', '0.6.0')
 
     const { readFile } = await import('node:fs/promises')
-
-    // settings.json untouched
     const mainRaw = await readFile(mainPath, 'utf-8')
     const mainParsed = JSON.parse(mainRaw)
+
+    // Existing settings preserved
     expect(mainParsed.env.FOO).toBe('bar')
     expect(mainParsed.model).toBe('sonnet')
-    expect(mainParsed.hooks).toBeUndefined()
-
-    // settings.local.json has the hooks
-    const localPath = join(tempDir, 'settings.local.json')
-    const localRaw = await readFile(localPath, 'utf-8')
-    const localParsed = JSON.parse(localRaw)
-    expect(localParsed.hooks.SessionStart).toBeDefined()
-    expect(localParsed.hooks.Stop).toBeDefined()
+    // Hooks added alongside
+    expect(mainParsed.hooks.SessionStart).toBeDefined()
+    expect(mainParsed.hooks.Stop).toBeDefined()
   })
 })

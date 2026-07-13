@@ -421,8 +421,9 @@ if (isMain || process.env.NODE_ENV !== 'test') {
   // Periodically check that hooks haven't been overwritten by another process
   // (e.g. Claude Code restoring its own settings.json state). Auto-repairs by
   // silently reinstalling to the last-used scope.
+  // Check frequently — Claude Code may overwrite settings.json at any time.
   const hooksHealthIntervalMs = Number.parseInt(
-    process.env.HOOKS_HEALTH_CHECK_INTERVAL_MS ?? '300000',
+    process.env.HOOKS_HEALTH_CHECK_INTERVAL_MS ?? '30000',
     10,
   )
   const hooksHealth = { wereInstalled: false }
