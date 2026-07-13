@@ -26,6 +26,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   usageProject: null,
   status: 'working',
   detail: '',
+  summary: '',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   statusSince: '2026-01-01T00:00:00.000Z',
@@ -81,6 +82,15 @@ describe('registerSessionSchema', () => {
 
   it('rejects a detail that is too long', () => {
     expect(() => registerSessionSchema.parse({ detail: 'x'.repeat(501) })).toThrow()
+  })
+
+  it('accepts a summary up to 200 chars', () => {
+    const result = registerSessionSchema.parse({ summary: 'Fix the login redirect' })
+    expect(result.summary).toBe('Fix the login redirect')
+  })
+
+  it('rejects a summary that is too long', () => {
+    expect(() => registerSessionSchema.parse({ summary: 'x'.repeat(201) })).toThrow()
   })
 
   it('trims whitespace from strings', () => {
@@ -150,6 +160,25 @@ describe('registerSession', () => {
   it('stores detail', () => {
     const [, session] = registerSession(emptyStore(), { detail: 'Working on X' })
     expect(session.detail).toBe('Working on X')
+  })
+
+  it('stores summary', () => {
+    const [, session] = registerSession(emptyStore(), { summary: 'Fix login redirect' })
+    expect(session.summary).toBe('Fix login redirect')
+  })
+
+  it('preserves previous summary when updating without summary', () => {
+    const [store, first] = registerSession(emptyStore(), {
+      id: 'same-id',
+      summary: 'Initial prompt',
+    })
+    expect(first.summary).toBe('Initial prompt')
+
+    const [, second] = registerSession(store, {
+      id: 'same-id',
+      status: 'finished',
+    })
+    expect(second.summary).toBe('Initial prompt')
   })
 
   it('stores the provided status', () => {

@@ -11,6 +11,7 @@ export type Session = {
   readonly usageProject: string | null
   readonly status: SessionStatus
   readonly detail: string
+  readonly summary: string
   readonly createdAt: string
   readonly updatedAt: string
   readonly statusSince: string

@@ -9,6 +9,7 @@ const sessionSchema = z.object({
   usageProject: z.string().nullable(),
   status: z.enum(sessionStatuses),
   detail: z.string(),
+  summary: z.string().catch(''),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   statusSince: z.string().datetime(),

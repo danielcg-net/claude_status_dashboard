@@ -758,6 +758,8 @@ const renderSession = (session: Session): HTMLElement => {
       createElement('span', { class: 'session-card__status' }, [statusLabels[session.status]]),
     ]),
     createElement('h2', {}, [session.name]),
+    session.summary &&
+      createElement('p', { class: 'session-card__summary', title: session.summary }, [session.summary]),
     createElement('p', { class: 'session-card__detail' }, [session.detail || statusDetails[session.status]]),
     renderSessionUsage(session, usageProject),
     createElement('dl', { class: 'session-card__meta' }, [
