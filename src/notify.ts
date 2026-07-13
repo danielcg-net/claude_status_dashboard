@@ -28,7 +28,7 @@ const parseHeaders = (raw: string | undefined): Record<string, string> => {
   }
 }
 
-let config = {
+const defaultNotifyConfig = () => ({
   enabled: (process.env.NOTIFY_ENABLED ?? 'true') !== 'false',
   webhookUrl: process.env.NOTIFY_WEBHOOK_URL ?? '',
   format: (process.env.NOTIFY_FORMAT ?? 'generic') as NotifyFormat,
@@ -41,9 +41,11 @@ let config = {
   pushoverToken: process.env.NOTIFY_PUSHOVER_TOKEN ?? '',
   pushoverUser: process.env.NOTIFY_PUSHOVER_USER ?? '',
   headers: parseHeaders(process.env.NOTIFY_HEADERS),
-}
+})
 
-/** Merge partial settings into the runtime config. */
+const notifyState = { config: defaultNotifyConfig() }
+
+/** Merge partial settings into the runtime notifyState.config. */
 export const setNotifyConfig = (override: {
   enabled?: boolean
   webhookUrl?: string
@@ -53,34 +55,21 @@ export const setNotifyConfig = (override: {
   pushoverUser?: string
   headers?: Record<string, string>
 }): void => {
-  if (override.enabled !== undefined) config.enabled = override.enabled
-  if (override.webhookUrl !== undefined) config.webhookUrl = override.webhookUrl
-  if (override.format !== undefined) config.format = override.format
-  if (override.events !== undefined) config.events = new Set(override.events)
-  if (override.pushoverToken !== undefined) config.pushoverToken = override.pushoverToken
-  if (override.pushoverUser !== undefined) config.pushoverUser = override.pushoverUser
-  if (override.headers !== undefined) config.headers = override.headers
+  if (override.enabled !== undefined) notifyState.config.enabled = override.enabled
+  if (override.webhookUrl !== undefined) notifyState.config.webhookUrl = override.webhookUrl
+  if (override.format !== undefined) notifyState.config.format = override.format
+  if (override.events !== undefined) notifyState.config.events = new Set(override.events)
+  if (override.pushoverToken !== undefined) notifyState.config.pushoverToken = override.pushoverToken
+  if (override.pushoverUser !== undefined) notifyState.config.pushoverUser = override.pushoverUser
+  if (override.headers !== undefined) notifyState.config.headers = override.headers
 }
 
-/** Read the current config (used by server for GET /api/settings/notify). */
-export const getNotifyConfig = () => config
+/** Read the current notifyState.config (used by server for GET /api/settings/notify). */
+export const getNotifyConfig = () => notifyState.config
 
 /** Reset to env-var defaults — for test isolation. */
 export const __resetNotifyConfig = (): void => {
-  config = {
-    enabled: (process.env.NOTIFY_ENABLED ?? 'true') !== 'false',
-    webhookUrl: process.env.NOTIFY_WEBHOOK_URL ?? '',
-    format: (process.env.NOTIFY_FORMAT ?? 'generic') as NotifyFormat,
-    events: new Set<string>(
-      (process.env.NOTIFY_ON ?? 'started,finished,idle,working,attention')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-    pushoverToken: process.env.NOTIFY_PUSHOVER_TOKEN ?? '',
-    pushoverUser: process.env.NOTIFY_PUSHOVER_USER ?? '',
-    headers: parseHeaders(process.env.NOTIFY_HEADERS),
-  }
+  notifyState.config = defaultNotifyConfig()
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +78,7 @@ export const __resetNotifyConfig = (): void => {
 
 /** Whether a given event type should fire a notification. */
 export const shouldNotify = (event: NotifyEvent): boolean =>
-  config.enabled && config.events.has(event)
+  notifyState.config.enabled && notifyState.config.events.has(event)
 
 // ---------------------------------------------------------------------------
 // Message text
@@ -137,18 +126,18 @@ const buildGeneric = (event: NotifyEvent, session: Session): Payload => ({
       usageProject: session.usageProject,
     },
   }),
-  headers: { 'Content-Type': 'application/json', ...config.headers },
+  headers: { 'Content-Type': 'application/json', ...notifyState.config.headers },
 })
 
 const buildPushover = (event: NotifyEvent, session: Session): Payload => ({
   body: JSON.stringify({
-    token: config.pushoverToken,
-    user: config.pushoverUser,
+    token: notifyState.config.pushoverToken,
+    user: notifyState.config.pushoverUser,
     title: 'Claude Status Dashboard',
     message: formatMessage(event, session),
     priority: event === 'attention' ? 1 : 0,
   }),
-  headers: { 'Content-Type': 'application/json', ...config.headers },
+  headers: { 'Content-Type': 'application/json', ...notifyState.config.headers },
 })
 
 const teamsColor = (event: NotifyEvent): string => {
@@ -183,7 +172,7 @@ const buildTeams = (event: NotifyEvent, session: Session): Payload => ({
       },
     ],
   }),
-  headers: { 'Content-Type': 'application/json', ...config.headers },
+  headers: { 'Content-Type': 'application/json', ...notifyState.config.headers },
 })
 
 const slackIcon = (event: NotifyEvent): string => {
@@ -214,7 +203,7 @@ const buildSlack = (event: NotifyEvent, session: Session): Payload => ({
       },
     ],
   }),
-  headers: { 'Content-Type': 'application/json', ...config.headers },
+  headers: { 'Content-Type': 'application/json', ...notifyState.config.headers },
 })
 
 const discordColors: Record<NotifyEvent, number> = {
@@ -240,7 +229,7 @@ const buildDiscord = (event: NotifyEvent, session: Session): Payload => ({
       },
     ],
   }),
-  headers: { 'Content-Type': 'application/json', ...config.headers },
+  headers: { 'Content-Type': 'application/json', ...notifyState.config.headers },
 })
 
 const builders: Record<NotifyFormat, (event: NotifyEvent, session: Session) => Payload> = {
@@ -265,16 +254,16 @@ export const _buildPayload = (
 /** Send a notification for the given event and session.  Safe to call
  *  without awaiting — failures are silently swallowed so the API stays fast. */
 export function notify(event: NotifyEvent, session: Session): void {
-  if (!config.enabled) return
-  if (!config.webhookUrl) return
+  if (!notifyState.config.enabled) return
+  if (!notifyState.config.webhookUrl) return
   if (!shouldNotify(event)) return
 
-  const builder = builders[config.format]
+  const builder = builders[notifyState.config.format]
   if (!builder) return // unknown format — silently skip
 
   const { body, headers } = builder(event, session)
 
-  fetch(config.webhookUrl, { method: 'POST', headers, body }).catch(() => {
+  fetch(notifyState.config.webhookUrl, { method: 'POST', headers, body }).catch(() => {
     // Fire-and-forget: notification failures must never affect the API.
   })
 }

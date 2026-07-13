@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-let cachedVersion: string | null = null
+const versionCache = { value: null as string | null }
 
 /** Returns the current version from package.json (cached in memory). */
 export const getVersion = (): string => {
-  if (cachedVersion !== null) return cachedVersion
+  if (versionCache.value !== null) return versionCache.value
   try {
     const pkgPath = fileURLToPath(new URL('../package.json', import.meta.url))
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string }
-    cachedVersion = pkg.version
-    return cachedVersion
+    versionCache.value = pkg.version
+    return versionCache.value
   } catch {
     return '0.0.0'
   }
@@ -26,7 +26,7 @@ export const compareVersions = (a: string, b: string): number => {
   const bParts = b.split('.').map(Number)
   const length = Math.max(aParts.length, bParts.length)
 
-  for (let i = 0; i < length; i++) {
+  for (const i of Array(length).keys()) {
     const aNum = aParts[i] ?? 0
     const bNum = bParts[i] ?? 0
     if (isNaN(aNum) || isNaN(bNum)) return 0

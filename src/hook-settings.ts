@@ -127,24 +127,24 @@ export const downloadHookScript = async (version: string): Promise<string> => {
   const scriptPath = join(dir, HOOK_SCRIPT_NAME)
 
   // `version` is a raw git ref (e.g. 'main', 'v0.5.1', 'feature-branch').
-  // Try it directly first; fall back to main.
+  // Try it directly first; fall back to main. Collect errors for the final
+  // rejection message rather than mutating a shared variable.
+  const errors: string[] = []
   const urls = [
     `${RAW_URL}/${version}/hooks/${HOOK_SCRIPT_NAME}`,
     `${RAW_URL}/main/hooks/${HOOK_SCRIPT_NAME}`,
   ]
 
-  let lastError: Error | undefined
-
   for (const url of urls) {
     const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
     if (!response.ok) {
-      lastError = new Error(`HTTP ${response.status} from ${url}`)
+      errors.push(`HTTP ${response.status} from ${url}`)
       continue
     }
 
     const content = await response.text()
     if (!content.trim()) {
-      lastError = new Error(`Empty response from ${url}`)
+      errors.push(`Empty response from ${url}`)
       continue
     }
 
@@ -154,7 +154,7 @@ export const downloadHookScript = async (version: string): Promise<string> => {
     return scriptPath
   }
 
-  throw new Error(`Failed to download hook script. Last error: ${lastError?.message}`)
+  throw new Error(`Failed to download hook script: ${errors.join('; ')}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +477,7 @@ export const installHooks = async (
   // 3. Read-merge-write-verify loop.  Claude Code may be editing the same
   //    settings.json concurrently; retry with backoff if our write is
   //    overwritten before we can confirm it.
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (const attempt of Array(5).keys()) {
     // Re-read the latest state each attempt
     const existing = (await readSettingsJson(targetPath)) ?? {}
 
@@ -547,7 +547,11 @@ const stripDashboardHooksFromFile = async (filePath: string): Promise<boolean> =
 
   if (Object.keys(existingHooks).length === 0) return false
 
-  let changed = false
+  // Build a new hooks object with dashboard entries stripped.  Compare the
+  // serialised form to detect whether anything changed — avoids mutable flags.
+  const originalJson = JSON.stringify(existingHooks)
+  const cleaned: Record<string, unknown> = {}
+
   for (const [event, matchers] of Object.entries(existingHooks)) {
     if (!Array.isArray(matchers)) continue
     const filtered = matchers.reduce<unknown[]>((kept, matcher) => {
@@ -567,27 +571,21 @@ const stripDashboardHooksFromFile = async (filePath: string): Promise<boolean> =
         if (typeof h.command !== 'string') return true
         return !(h.command as string).includes(HOOK_SCRIPT_MATCHER)
       })
-      if (nonDashboard.length === 0) { changed = true; return kept }
-      if (nonDashboard.length !== hookList.length) changed = true
+      if (nonDashboard.length === 0) return kept // all dashboard — drop matcher
       kept.push({ ...entry, hooks: nonDashboard })
       return kept
     }, [])
-    if (filtered.length === 0) {
-      delete existingHooks[event]
-      changed = true
-    } else {
-      existingHooks[event] = filtered
-    }
+    if (filtered.length > 0) cleaned[event] = filtered
   }
 
-  if (!changed) return false
+  if (JSON.stringify(cleaned) === originalJson) return false // nothing changed
 
-  const remainingKeys = Object.keys(existingHooks)
   const merged = { ...existing }
+  const remainingKeys = Object.keys(cleaned)
   if (remainingKeys.length === 0) {
     delete merged.hooks
   } else {
-    merged.hooks = existingHooks
+    merged.hooks = cleaned
   }
 
   await writeSettingsJson(filePath, merged)

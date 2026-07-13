@@ -291,12 +291,13 @@ export const fetchUsageSummary = async (): Promise<UsageSummary> => {
     // Session-level data is optional — older ccusage versions may not
     // support the `session` subcommand, so we fetch it separately and
     // gracefully degrade to an empty list on failure.
-    let sessionsJson: unknown = { sessions: [] }
-    try {
-      sessionsJson = await runCcusageWithFallback('session')
-    } catch {
-      // ccusage session unavailable — fall back to day-level matching
-    }
+    const sessionsJson: unknown = await (async () => {
+      try {
+        return await runCcusageWithFallback('session')
+      } catch {
+        return { sessions: [] }
+      }
+    })()
 
     const today = latestDayFrom(dailyJson)
 

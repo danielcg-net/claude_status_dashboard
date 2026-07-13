@@ -217,7 +217,7 @@ const costWindowOrder = Object.keys(costWindowLabels) as readonly CostWindow[]
 
 const MODEL_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#38bdf8', '#f87171'] as const
 
-let state = initialState
+const ui = { state: initialState }
 
 // Parse a UTC ISO string and return the epoch ms, or null if invalid.
 const parseIso = (isoDate: string): number | null => {
@@ -478,13 +478,12 @@ const createElement = <K extends keyof HTMLElementTagNameMap>(
 
 // ── Toast notification ──────────────────────────────────────────────
 
-let toastTimer: ReturnType<typeof setTimeout> | null = null
-let toastFallbackTimer: ReturnType<typeof setTimeout> | null = null
+const toastTimers = { primary: null as ReturnType<typeof setTimeout> | null, fallback: null as ReturnType<typeof setTimeout> | null }
 
 const showToast = (message: string, type: 'success' | 'error', durationMs: number = 3500): void => {
   // Clear any pending timers from a previous toast
-  if (toastTimer !== null) clearTimeout(toastTimer)
-  if (toastFallbackTimer !== null) clearTimeout(toastFallbackTimer)
+  if (toastTimers.primary !== null) clearTimeout(toastTimers.primary)
+  if (toastTimers.fallback !== null) clearTimeout(toastTimers.fallback)
   const existing = document.querySelector('.toast')
   if (existing) existing.remove()
 
@@ -494,11 +493,11 @@ const showToast = (message: string, type: 'success' | 'error', durationMs: numbe
   // Trigger enter animation
   requestAnimationFrame(() => toast.classList.add('toast--visible'))
 
-  toastTimer = setTimeout(() => {
+  toastTimers.primary = setTimeout(() => {
     toast.classList.remove('toast--visible')
     toast.addEventListener('transitionend', () => toast.remove(), { once: true })
     // Fallback: remove after transition duration if transitionend didn't fire.
-    toastFallbackTimer = setTimeout(() => { toast.remove() }, 350)
+    toastTimers.fallback = setTimeout(() => { toast.remove() }, 350)
   }, durationMs)
 }
 
@@ -514,7 +513,7 @@ const formatMoney = (value: number): string =>
 const usageDaysForWindow = (usage: UsageSummary, costWindow: CostWindow): readonly UsageDay[] =>
   daysForWindow(
     Object.values(usage.projects)
-      .filter((project) => !state.excludedRepos.has(project.project))
+      .filter((project) => !ui.state.excludedRepos.has(project.project))
       .flatMap((project) => project.days),
     costWindow,
   )
@@ -570,17 +569,16 @@ const shortProjectName = (projectKey: string): string => {
   // take everything after it. This preserves dashes in dir names.
   // Only use long, specific prefixes to avoid false positives.
   const prefixes = ['-Private-Projects-', '-Projects-']
-  let best = -1
-  let bestPrefix = ''
-  for (const prefix of prefixes) {
-    const idx = projectKey.lastIndexOf(prefix)
-    if (idx > best) {
-      best = idx
-      bestPrefix = prefix
-    }
-  }
-  if (best >= 0) {
-    return projectKey.slice(best + bestPrefix.length)
+  // Find the rightmost matching prefix via functional reduction
+  const best = prefixes.reduce(
+    (found, prefix) => {
+      const idx = projectKey.lastIndexOf(prefix)
+      return idx > found.idx ? { idx, prefix } : found
+    },
+    { idx: -1, prefix: '' },
+  )
+  if (best.idx >= 0) {
+    return projectKey.slice(best.idx + best.prefix.length)
   }
   // Fallback: for Linux/macOS paths like -home-user-repo or -Users-name-repo,
   // skip the system dir and username, take the rest.
@@ -602,17 +600,17 @@ const projectCandidatesFor = (session: Session): readonly string[] =>
 
 // Build a lookup map from session candidates to project for the current usage data.
 // Used by both isSessionExcluded and findUsageProject to avoid O(sessions x projects).
-let projectLookupCache: { readonly usageKey: string; readonly map: ReadonlyMap<string, UsageProject> } | null = null
+const projectLookup = { cache: null as { readonly usageKey: string; readonly map: ReadonlyMap<string, UsageProject> } | null }
 
 const buildProjectLookup = (usage: UsageSummary): ReadonlyMap<string, UsageProject> => {
   const cacheKey = Object.keys(usage.projects).sort().join(',')
-  if (projectLookupCache?.usageKey === cacheKey) return projectLookupCache.map
+  if (projectLookup.cache?.usageKey === cacheKey) return projectLookup.cache.map
   const map = new Map<string, UsageProject>()
   for (const project of Object.values(usage.projects)) {
     map.set(project.project, project)
     map.set(normalizeProjectKey(project.project), project)
   }
-  projectLookupCache = { usageKey: cacheKey, map }
+  projectLookup.cache = { usageKey: cacheKey, map }
   return map
 }
 
@@ -634,26 +632,26 @@ const findUsageProjectUnfiltered = (session: Session, usage: UsageSummary): Usag
 
 const isSessionExcluded = (session: Session): boolean => {
   // Use unfiltered project lookup so excluded repos are still findable
-  if (state.usage?.available) {
-    const project = findUsageProjectUnfiltered(session, state.usage)
-    if (project && state.excludedRepos.has(project.project)) return true
+  if (ui.state.usage?.available) {
+    const project = findUsageProjectUnfiltered(session, ui.state.usage)
+    if (project && ui.state.excludedRepos.has(project.project)) return true
   }
   // Fallback: match session.usageProject against excluded keys by exact match only
-  if (session.usageProject && state.excludedRepos.has(session.usageProject)) return true
+  if (session.usageProject && ui.state.excludedRepos.has(session.usageProject)) return true
   return false
 }
 
 const isSessionStateExcluded = (session: Session): boolean =>
-  state.excludedStates.size > 0 && state.excludedStates.has(session.status)
+  ui.state.excludedStates.size > 0 && ui.state.excludedStates.has(session.status)
 
 const findUsageProject = (session: Session, usage: UsageSummary | null): UsageProject | null => {
   if (!usage?.available) {
     return null
   }
 
-  const projects = state.excludedRepos.size === 0
+  const projects = ui.state.excludedRepos.size === 0
     ? Object.values(usage.projects)
-    : Object.values(usage.projects).filter((p) => !state.excludedRepos.has(p.project))
+    : Object.values(usage.projects).filter((p) => !ui.state.excludedRepos.has(p.project))
   const candidates = new Set(projectCandidatesFor(session))
 
   return (
@@ -676,7 +674,7 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
   // conversation sessions by project + time overlap for precise per-session
   // costs. Fall back to day-level filtering when ccusage session data is
   // unavailable or no sessions match.
-  const ccusageSessions = state.usage?.sessions ?? []
+  const ccusageSessions = ui.state.usage?.sessions ?? []
   const matchedSessions = ccusageSessions.length > 0
     ? matchCCUsageSessions(session, ccusageSessions)
     : []
@@ -748,8 +746,8 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
 
 const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
-  const overdue = session.status === 'attention' && ageMs !== null && ageMs >= state.redAlertAfterMs
-  const usageProject = findUsageProject(session, state.usage)
+  const overdue = session.status === 'attention' && ageMs !== null && ageMs >= ui.state.redAlertAfterMs
+  const usageProject = findUsageProject(session, ui.state.usage)
   const card = createElement('article', {
     class: `session-card session-card--${statusToColor[session.status]}${overdue ? ' session-card--overdue' : ''}`,
   })
@@ -786,8 +784,8 @@ const renderSession = (session: Session): HTMLElement => {
 const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
   if (sessionCount === 0) return null
 
-  const totalPages = Math.max(1, Math.ceil(sessionCount / state.pageSize))
-  const safeIndex = Math.min(state.pageIndex, totalPages - 1)
+  const totalPages = Math.max(1, Math.ceil(sessionCount / ui.state.pageSize))
+  const safeIndex = Math.min(ui.state.pageIndex, totalPages - 1)
   const currentPage = safeIndex + 1
 
   return createElement('div', { class: 'session-toolbar' }, [
@@ -795,17 +793,17 @@ const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
     createElement('div', { class: 'session-toolbar__group', role: 'group', 'aria-label': 'Sort sessions' }, [
       createElement('span', { class: 'session-toolbar__label' }, ['Sort']),
       createElement('button', {
-        class: `session-toolbar__btn${state.sortMode === 'status' ? ' session-toolbar__btn--active' : ''}`,
+        class: `session-toolbar__btn${ui.state.sortMode === 'status' ? ' session-toolbar__btn--active' : ''}`,
         type: 'button',
         'data-sort': 'status',
       }, ['State']),
       createElement('button', {
-        class: `session-toolbar__btn${state.sortMode === 'updatedAt-desc' ? ' session-toolbar__btn--active' : ''}`,
+        class: `session-toolbar__btn${ui.state.sortMode === 'updatedAt-desc' ? ' session-toolbar__btn--active' : ''}`,
         type: 'button',
         'data-sort': 'updatedAt-desc',
       }, ['Newest']),
       createElement('button', {
-        class: `session-toolbar__btn${state.sortMode === 'updatedAt-asc' ? ' session-toolbar__btn--active' : ''}`,
+        class: `session-toolbar__btn${ui.state.sortMode === 'updatedAt-asc' ? ' session-toolbar__btn--active' : ''}`,
         type: 'button',
         'data-sort': 'updatedAt-asc',
       }, ['Oldest']),
@@ -815,7 +813,7 @@ const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
       createElement('span', { class: 'session-toolbar__label' }, ['Show']),
       ...([10, 20, 50, 100] as const).map((size) =>
         createElement('button', {
-          class: `session-toolbar__btn${state.pageSize === size ? ' session-toolbar__btn--active' : ''}`,
+          class: `session-toolbar__btn${ui.state.pageSize === size ? ' session-toolbar__btn--active' : ''}`,
           type: 'button',
           'data-page-size': String(size),
         }, [String(size)]),
@@ -831,13 +829,13 @@ const renderSessionToolbar = (sessionCount: number): HTMLElement | null => {
             class: 'session-toolbar__btn',
             type: 'button',
             'data-page': 'prev',
-            disabled: state.pageIndex === 0 ? 'true' : undefined,
+            disabled: ui.state.pageIndex === 0 ? 'true' : undefined,
           }, ['← Prev']),
           createElement('button', {
             class: 'session-toolbar__btn',
             type: 'button',
             'data-page': 'next',
-            disabled: state.pageIndex >= totalPages - 1 ? 'true' : undefined,
+            disabled: ui.state.pageIndex >= totalPages - 1 ? 'true' : undefined,
           }, ['Next →']),
         ])]
       : []),
@@ -867,7 +865,7 @@ const renderCostWindowControls = (): HTMLElement =>
       createElement(
         'button',
         {
-          class: `usage__window${state.costWindow === costWindow ? ' usage__window--active' : ''}`,
+          class: `usage__window${ui.state.costWindow === costWindow ? ' usage__window--active' : ''}`,
           type: 'button',
           'data-cost-window': costWindow,
         },
@@ -892,7 +890,7 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   }
 
   const activeBlock = usage.activeBlock
-  const windowTotals = sumUsageDays(usageDaysForWindow(usage, state.costWindow))
+  const windowTotals = sumUsageDays(usageDaysForWindow(usage, ui.state.costWindow))
 
   return createElement('section', { class: 'usage', 'aria-label': 'Claude usage' }, [
     createElement('div', { class: 'usage__header' }, [
@@ -909,14 +907,14 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       ]),
     ]),
     createElement('div', { class: 'usage__metrics' }, [
-      usageMetric(`Cost · ${costWindowLabels[state.costWindow]}`, formatMoney(windowTotals.totalCost)),
-      usageMetric(`Tokens · ${costWindowLabels[state.costWindow]}`, formatNumber(windowTotals.totalTokens)),
+      usageMetric(`Cost · ${costWindowLabels[ui.state.costWindow]}`, formatMoney(windowTotals.totalCost)),
+      usageMetric(`Tokens · ${costWindowLabels[ui.state.costWindow]}`, formatNumber(windowTotals.totalTokens)),
       usageMetric(
         'Matched repos',
         (() => {
           const total = Object.keys(usage.projects).length
-          if (state.excludedRepos.size === 0) return formatNumber(total)
-          const activeExclusions = [...state.excludedRepos].filter((k) => k in usage.projects).length
+          if (ui.state.excludedRepos.size === 0) return formatNumber(total)
+          const activeExclusions = [...ui.state.excludedRepos].filter((k) => k in usage.projects).length
           return `${formatNumber(total - activeExclusions)}/${formatNumber(total)}`
         })(),
       ),
@@ -938,11 +936,11 @@ const renderUsage = (usage: UsageSummary | null): HTMLElement => {
 }
 
 const renderRepoCard = (project: UsageProject): HTMLElement => {
-  const windowDays = daysForWindow(project.days, state.costWindow)
+  const windowDays = daysForWindow(project.days, ui.state.costWindow)
   const totals = sumUsageDays(windowDays)
   const recentDays = recentUsageDays(windowDays)
   const maxCost = Math.max(...recentDays.map((day) => day.totalCost), 0)
-  const isSelected = state.selectedRepo === project.project
+  const isSelected = ui.state.selectedRepo === project.project
 
   return createElement('article', {
     class: `repo-card${isSelected ? ' repo-card--selected' : ''}`,
@@ -978,7 +976,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
       ]),
     ]),
     ...(() => {
-      const models = aggregateModelBreakdowns(project.days, state.costWindow)
+      const models = aggregateModelBreakdowns(project.days, ui.state.costWindow)
       if (models.length === 0) return [] as HTMLElement[]
       const maxModelCost = Math.max(...models.map((m) => m.cost), 0)
       return [createElement('div', { class: 'model-breakdown' }, [
@@ -1013,7 +1011,7 @@ const renderRepoCard = (project: UsageProject): HTMLElement => {
 }
 
 const renderRepoDetail = (project: UsageProject): HTMLElement => {
-  const windowDays = daysForWindow(project.days, state.costWindow)
+  const windowDays = daysForWindow(project.days, ui.state.costWindow)
   const totals = sumUsageDays(windowDays)
   const allDays = [...windowDays]
     .filter((day) => day.totalCost > 0 || day.totalTokens > 0)
@@ -1037,7 +1035,7 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
     ]),
     createElement('div', { class: 'repo-detail__metrics' }, [
       createElement('div', { class: 'usage__metric' }, [
-        createElement('span', {}, [`Cost · ${costWindowLabels[state.costWindow]}`]),
+        createElement('span', {}, [`Cost · ${costWindowLabels[ui.state.costWindow]}`]),
         createElement('strong', {}, [formatMoney(totals.totalCost)]),
       ]),
       createElement('div', { class: 'usage__metric' }, [
@@ -1092,9 +1090,9 @@ const renderRepoDetail = (project: UsageProject): HTMLElement => {
 }
 
 const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => {
-  if (state.excludedRepos.size === 0) return null
+  if (ui.state.excludedRepos.size === 0) return null
 
-  const tags = [...state.excludedRepos]
+  const tags = [...ui.state.excludedRepos]
     .filter((key) => key in usage.projects)
     .map((key) => ({
       key,
@@ -1125,10 +1123,10 @@ const renderExcludedReposSection = (usage: UsageSummary): HTMLElement | null => 
 }
 
 const renderExcludedStatesSection = (): HTMLElement | null => {
-  if (state.excludedStates.size === 0) return null
+  if (ui.state.excludedStates.size === 0) return null
 
   const sortedStates = (['finished', 'idle', 'working', 'attention'] as const)
-    .filter((s) => state.excludedStates.has(s))
+    .filter((s) => ui.state.excludedStates.has(s))
 
   return createElement('details', { class: 'excluded-details excluded-details--states' }, [
     createElement('summary', { class: 'excluded-details__summary' }, [
@@ -1153,16 +1151,16 @@ const renderExcludedStatesSection = (): HTMLElement | null => {
 const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
   const allProjects = Object.values(usage.projects)
     .filter((project) => {
-      const windowDays = daysForWindow(project.days, state.costWindow)
+      const windowDays = daysForWindow(project.days, ui.state.costWindow)
       return windowDays.some((day) => day.totalCost > 0 || day.totalTokens > 0)
     })
     .sort((left, right) => {
-      const leftTotals = sumUsageDays(daysForWindow(left.days, state.costWindow))
-      const rightTotals = sumUsageDays(daysForWindow(right.days, state.costWindow))
+      const leftTotals = sumUsageDays(daysForWindow(left.days, ui.state.costWindow))
+      const rightTotals = sumUsageDays(daysForWindow(right.days, ui.state.costWindow))
       return rightTotals.totalCost - leftTotals.totalCost
     })
 
-  const projects = allProjects.filter((p) => !state.excludedRepos.has(p.project))
+  const projects = allProjects.filter((p) => !ui.state.excludedRepos.has(p.project))
 
   if (allProjects.length === 0) {
     return createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
@@ -1172,8 +1170,8 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
   }
 
   // If a repo is selected, show its detail view
-  if (state.selectedRepo) {
-    const selected = projects.find((p) => p.project === state.selectedRepo)
+  if (ui.state.selectedRepo) {
+    const selected = projects.find((p) => p.project === ui.state.selectedRepo)
     if (selected) {
       return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
         renderRepoDetail(selected),
@@ -1181,7 +1179,7 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
     }
   }
 
-  const activeExclusions = [...state.excludedRepos].filter((k) => k in usage.projects).length
+  const activeExclusions = [...ui.state.excludedRepos].filter((k) => k in usage.projects).length
 
   return createElement('section', { class: 'repo-explorer', 'aria-label': 'Repo cost explorer' }, [
     createElement('div', { class: 'repo-explorer__header' }, [
@@ -1202,11 +1200,13 @@ const renderRepoExplorer = (usage: UsageSummary): HTMLElement => {
 // properties of its children so interactive state (open dropdowns, focus,
 // selections) survives refreshes.
 
-let alertControlsRoot: HTMLElement | null = null
-let notifyPanelEl: HTMLElement | null = null
-let beepPanelEl: HTMLElement | null = null
-let hooksPanelEl: HTMLElement | null = null
-let alertControlsLive = false
+const panels = {
+  alertControlsRoot: null as HTMLElement | null,
+  notifyPanel: null as HTMLElement | null,
+  beepPanel: null as HTMLElement | null,
+  hooksPanel: null as HTMLElement | null,
+  alertControlsLive: false,
+}
 
 // Helper: sync an input's value only when it is NOT focused (user is not
 // actively editing it), avoiding clobbering in-progress typing.
@@ -1360,74 +1360,74 @@ const syncNotifyPanelFields = (panel: HTMLElement, s: NotifySettingsUI): void =>
 }
 
 const syncAlertControlsInPlace = (): void => {
-  if (!alertControlsRoot) return
+  if (!panels.alertControlsRoot) return
 
   // Beep toggle active class
-  const beepToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#beep-toggle')
+  const beepToggle = panels.alertControlsRoot.querySelector<HTMLButtonElement>('#beep-toggle')
   if (beepToggle) {
-    beepToggle.classList.toggle('audio-toggle--active', state.beepSettingsOpen)
+    beepToggle.classList.toggle('audio-toggle--active', ui.state.beepSettingsOpen)
   }
 
   // Notify toggle active class
-  const notifyToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#notify-toggle')
+  const notifyToggle = panels.alertControlsRoot.querySelector<HTMLButtonElement>('#notify-toggle')
   if (notifyToggle) {
-    notifyToggle.classList.toggle('audio-toggle--active', state.notifySettingsOpen)
+    notifyToggle.classList.toggle('audio-toggle--active', ui.state.notifySettingsOpen)
   }
 
   // Hooks toggle active class
-  const hooksToggle = alertControlsRoot.querySelector<HTMLButtonElement>('#hooks-toggle')
+  const hooksToggle = panels.alertControlsRoot.querySelector<HTMLButtonElement>('#hooks-toggle')
   if (hooksToggle) {
-    hooksToggle.classList.toggle('audio-toggle--active', state.hooksSettingsOpen)
+    hooksToggle.classList.toggle('audio-toggle--active', ui.state.hooksSettingsOpen)
   }
 
   // ── Beep panel visibility transitions ──
   {
-    const s = state.beepSettings
-    const shouldShow = state.beepSettingsOpen && s !== null
+    const s = ui.state.beepSettings
+    const shouldShow = ui.state.beepSettingsOpen && s !== null
 
-    if (shouldShow && !beepPanelEl) {
-      beepPanelEl = buildBeepPanel(s)
-      alertControlsRoot.append(beepPanelEl)
+    if (shouldShow && !panels.beepPanel) {
+      panels.beepPanel = buildBeepPanel(s)
+      panels.alertControlsRoot.append(panels.beepPanel)
       attachBeepPanelEvents()
-    } else if (shouldShow && beepPanelEl) {
-      syncBeepPanelFields(beepPanelEl, s)
-    } else if (!shouldShow && beepPanelEl) {
-      beepPanelEl.remove()
-      beepPanelEl = null
+    } else if (shouldShow && panels.beepPanel) {
+      syncBeepPanelFields(panels.beepPanel, s)
+    } else if (!shouldShow && panels.beepPanel) {
+      panels.beepPanel.remove()
+      panels.beepPanel = null
     }
   }
 
   // ── Notify panel visibility transitions ──
   {
-    const s = state.notifySettings
-    const shouldShow = state.notifySettingsOpen && s !== null
+    const s = ui.state.notifySettings
+    const shouldShow = ui.state.notifySettingsOpen && s !== null
 
-    if (shouldShow && !notifyPanelEl) {
-      notifyPanelEl = buildNotifyPanel(s)
-      alertControlsRoot.append(notifyPanelEl)
+    if (shouldShow && !panels.notifyPanel) {
+      panels.notifyPanel = buildNotifyPanel(s)
+      panels.alertControlsRoot.append(panels.notifyPanel)
       attachNotifyPanelEvents()
-    } else if (shouldShow && notifyPanelEl) {
-      syncNotifyPanelFields(notifyPanelEl, s)
-    } else if (!shouldShow && notifyPanelEl) {
-      notifyPanelEl.remove()
-      notifyPanelEl = null
+    } else if (shouldShow && panels.notifyPanel) {
+      syncNotifyPanelFields(panels.notifyPanel, s)
+    } else if (!shouldShow && panels.notifyPanel) {
+      panels.notifyPanel.remove()
+      panels.notifyPanel = null
     }
   }
 
   // ── Hooks panel visibility transitions ──
   {
-    const s = state.hooksSettings
-    const shouldShow = state.hooksSettingsOpen && s !== null
+    const s = ui.state.hooksSettings
+    const shouldShow = ui.state.hooksSettingsOpen && s !== null
 
-    if (shouldShow && !hooksPanelEl) {
-      hooksPanelEl = buildHooksPanel(s)
-      alertControlsRoot.append(hooksPanelEl)
+    if (shouldShow && !panels.hooksPanel) {
+      panels.hooksPanel = buildHooksPanel(s)
+      panels.alertControlsRoot.append(panels.hooksPanel)
       attachHooksPanelEvents()
-    } else if (shouldShow && hooksPanelEl) {
-      syncHooksPanelFields(hooksPanelEl, s)
-    } else if (!shouldShow && hooksPanelEl) {
-      hooksPanelEl.remove()
-      hooksPanelEl = null
+    } else if (shouldShow && panels.hooksPanel) {
+      syncHooksPanelFields(panels.hooksPanel, s)
+    } else if (!shouldShow && panels.hooksPanel) {
+      panels.hooksPanel.remove()
+      panels.hooksPanel = null
     }
   }
 }
@@ -1438,17 +1438,17 @@ const buildAlertControls = (): HTMLElement => {
   const children: HTMLElement[] = [
     createElement('button', {
       id: 'beep-toggle',
-      class: `audio-toggle${state.beepSettingsOpen ? ' audio-toggle--active' : ''}`,
+      class: `audio-toggle${ui.state.beepSettingsOpen ? ' audio-toggle--active' : ''}`,
       type: 'button',
     }, ['Beeps']),
     createElement('button', {
       id: 'notify-toggle',
-      class: `audio-toggle${state.notifySettingsOpen ? ' audio-toggle--active' : ''}`,
+      class: `audio-toggle${ui.state.notifySettingsOpen ? ' audio-toggle--active' : ''}`,
       type: 'button',
     }, ['Notifications']),
     createElement('button', {
       id: 'hooks-toggle',
-      class: `audio-toggle${state.hooksSettingsOpen ? ' audio-toggle--active' : ''}`,
+      class: `audio-toggle${ui.state.hooksSettingsOpen ? ' audio-toggle--active' : ''}`,
       type: 'button',
     }, ['Hooks']),
   ]
@@ -1459,24 +1459,24 @@ const buildAlertControls = (): HTMLElement => {
 // ── One-time event listeners for alert controls (never re-attached) ──
 
 const attachAlertControlEvents = (): void => {
-  if (alertControlsLive) return
-  alertControlsLive = true
+  if (panels.alertControlsLive) return
+  panels.alertControlsLive = true
 
   // Beep toggle: open/close settings panel
   document.querySelector<HTMLButtonElement>('#beep-toggle')?.addEventListener('click', () => {
-    state = { ...state, beepSettingsOpen: !state.beepSettingsOpen }
+    ui.state = { ...ui.state, beepSettingsOpen: !ui.state.beepSettingsOpen }
     render()
   })
 
   // Notify toggle: open/close settings panel
   document.querySelector<HTMLButtonElement>('#notify-toggle')?.addEventListener('click', () => {
-    state = { ...state, notifySettingsOpen: !state.notifySettingsOpen }
+    ui.state = { ...ui.state, notifySettingsOpen: !ui.state.notifySettingsOpen }
     render()
   })
 
   // Hooks toggle: open/close settings panel
   document.querySelector<HTMLButtonElement>('#hooks-toggle')?.addEventListener('click', () => {
-    state = { ...state, hooksSettingsOpen: !state.hooksSettingsOpen }
+    ui.state = { ...ui.state, hooksSettingsOpen: !ui.state.hooksSettingsOpen }
     render()
   })
 }
@@ -1484,7 +1484,7 @@ const attachAlertControlEvents = (): void => {
 const attachNotifyPanelEvents = (): void => {
   // Close button
   document.querySelector('.notify-panel__close')?.addEventListener('click', () => {
-    state = { ...state, notifySettingsOpen: false }
+    ui.state = { ...ui.state, notifySettingsOpen: false }
     render()
   })
 
@@ -1493,7 +1493,7 @@ const attachNotifyPanelEvents = (): void => {
     const checked = (event.currentTarget as HTMLInputElement).checked
     try {
       const updated = await saveNotifySettings({ enabled: checked })
-      state = { ...state, notifySettings: updated }
+      ui.state = { ...ui.state, notifySettings: updated }
       showToast(`Notifications ${checked ? 'enabled' : 'disabled'}`, 'success')
     } catch {
       showToast('Failed to update notification settings', 'error')
@@ -1521,7 +1521,7 @@ const attachNotifyPanelEvents = (): void => {
 
     try {
       const updated = await saveNotifySettings(body)
-      state = { ...state, notifySettings: updated }
+      ui.state = { ...ui.state, notifySettings: updated }
       showToast('Notification settings saved', 'success')
     } catch (err) {
       showToast('Failed to save notification settings', 'error')
@@ -1563,7 +1563,7 @@ const buildBeepPanel = (s: BeepSettingsUI): HTMLElement =>
           min: '0',
           step: '1',
           inputmode: 'numeric',
-          value: String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(state) / 1000)),
+          value: String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(ui.state) / 1000)),
           disabled: s.enabled ? undefined : 'true',
         }),
       ]),
@@ -1614,7 +1614,7 @@ const syncBeepPanelFields = (panel: HTMLElement, s: BeepSettingsUI): void => {
   syncCheckbox(panel.querySelector<HTMLInputElement>('#beep-enabled'), enabled)
   syncTextLike(
     panel.querySelector<HTMLInputElement>('#alert-after-seconds'),
-    String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(state) / 1000)),
+    String(s.alertAfterMs !== null ? Math.round(s.alertAfterMs / 1000) : Math.round(redAlertAfterMs(ui.state) / 1000)),
   )
   syncDisabled(panel.querySelector<HTMLInputElement>('#alert-after-seconds'), !enabled)
   syncCheckbox(panel.querySelector<HTMLInputElement>('#limit-beeps'), s.maxBeeps !== null)
@@ -1639,7 +1639,7 @@ const syncBeepPanelFields = (panel: HTMLElement, s: BeepSettingsUI): void => {
 const attachBeepPanelEvents = (): void => {
   // Close button
   document.querySelector('.beep-panel__close')?.addEventListener('click', () => {
-    state = { ...state, beepSettingsOpen: false }
+    ui.state = { ...ui.state, beepSettingsOpen: false }
     render()
   })
 
@@ -1658,7 +1658,7 @@ const attachBeepPanelEvents = (): void => {
     const enabled = (event.currentTarget as HTMLInputElement).checked
 
     const alertAfterInput = document.querySelector<HTMLInputElement>('#alert-after-seconds')
-    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(state) / 1000)
+    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(ui.state) / 1000)
     const alertAfterMs = Number.isFinite(seconds) ? seconds * 1000 : null
 
     const limitChecked = document.querySelector<HTMLInputElement>('#limit-beeps')?.checked ?? false
@@ -1667,7 +1667,7 @@ const attachBeepPanelEvents = (): void => {
       if (!limitChecked) return null
       if (!maxBeepsInput || !maxBeepsInput.value.trim()) return null
       const raw = maxBeepsInput.valueAsNumber
-      if (Number.isNaN(raw)) return state.beepSettings?.maxBeeps ?? 5
+      if (Number.isNaN(raw)) return ui.state.beepSettings?.maxBeeps ?? 5
       return Math.max(1, Math.floor(raw))
     })()
 
@@ -1676,8 +1676,8 @@ const attachBeepPanelEvents = (): void => {
 
     try {
       const updated = await saveBeepSettings({ enabled, alertAfterMs, maxBeeps, events })
-      state = {
-        ...state,
+      ui.state = {
+        ...ui.state,
         beepSettings: updated,
         audioEnabled: enabled,
         redAlertAfterOverrideMs: updated.alertAfterMs,
@@ -1693,7 +1693,7 @@ const attachBeepPanelEvents = (): void => {
   // Save button
   document.querySelector<HTMLButtonElement>('#beep-save')?.addEventListener('click', async () => {
     const alertAfterInput = document.querySelector<HTMLInputElement>('#alert-after-seconds')
-    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(state) / 1000)
+    const seconds = alertAfterInput ? Math.max(0, Math.floor(alertAfterInput.valueAsNumber)) : Math.round(redAlertAfterMs(ui.state) / 1000)
     const alertAfterMs = Number.isFinite(seconds) ? seconds * 1000 : null
 
     const limitChecked = document.querySelector<HTMLInputElement>('#limit-beeps')?.checked ?? false
@@ -1702,7 +1702,7 @@ const attachBeepPanelEvents = (): void => {
       if (!limitChecked) return null
       if (!maxBeepsInput || !maxBeepsInput.value.trim()) return null
       const raw = maxBeepsInput.valueAsNumber
-      if (Number.isNaN(raw)) return state.beepSettings?.maxBeeps ?? 5
+      if (Number.isNaN(raw)) return ui.state.beepSettings?.maxBeeps ?? 5
       return Math.max(1, Math.floor(raw))
     })()
 
@@ -1710,7 +1710,7 @@ const attachBeepPanelEvents = (): void => {
       .map(el => el.value)
 
     const body: Record<string, unknown> = {
-      enabled: document.querySelector<HTMLInputElement>('#beep-enabled')?.checked ?? state.beepSettings?.enabled ?? false,
+      enabled: document.querySelector<HTMLInputElement>('#beep-enabled')?.checked ?? ui.state.beepSettings?.enabled ?? false,
       alertAfterMs,
       maxBeeps,
       events,
@@ -1718,8 +1718,8 @@ const attachBeepPanelEvents = (): void => {
 
     try {
       const updated = await saveBeepSettings(body)
-      state = {
-        ...state,
+      ui.state = {
+        ...ui.state,
         beepSettings: updated,
         audioEnabled: updated.enabled,
         redAlertAfterOverrideMs: updated.alertAfterMs,
@@ -1865,7 +1865,7 @@ const syncHooksPanelFields = (panel: HTMLElement, s: HooksSettingsUI): void => {
 const attachHooksPanelEvents = (): void => {
   // Close button
   document.querySelector('.hooks-panel__close')?.addEventListener('click', () => {
-    state = { ...state, hooksSettingsOpen: false }
+    ui.state = { ...ui.state, hooksSettingsOpen: false }
     render()
   })
 
@@ -1874,7 +1874,7 @@ const attachHooksPanelEvents = (): void => {
     const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
     try {
       const updated = await saveHookSettings({ action: 'install', scope })
-      state = { ...state, hooksSettings: updated }
+      ui.state = { ...ui.state, hooksSettings: updated }
       showToast('Hooks installed successfully', 'success')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1888,7 +1888,7 @@ const attachHooksPanelEvents = (): void => {
     const scope = (document.querySelector<HTMLSelectElement>('#hooks-scope')?.value) ?? 'global'
     try {
       const updated = await saveHookSettings({ action: 'delete', scope })
-      state = { ...state, hooksSettings: updated }
+      ui.state = { ...ui.state, hooksSettings: updated }
       showToast('Hooks deleted', 'success')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1904,17 +1904,19 @@ const versionBannerDismissedKey = 'version-banner-dismissed'
 // The shell, header, and alert-controls are created once and never detached.
 // Only #app-body is replaced on each 2s cycle so interactive state (open
 // <select> dropdowns, text selections, focus) is preserved.
-let shellEl: HTMLElement | null = null
-let headerEl: HTMLElement | null = null
-let bodyWrapper: HTMLElement | null = null
-let bannerWrapper: HTMLElement | null = null
-let firstRender = true
+const shell = {
+  shellEl: null as HTMLElement | null,
+  headerEl: null as HTMLElement | null,
+  bodyWrapper: null as HTMLElement | null,
+  bannerWrapper: null as HTMLElement | null,
+  firstRender: true,
+}
 
 const renderUpdateBanner = (): HTMLElement | null => {
-  if (!state.updateAvailable) return null
-  if (sessionStorage.getItem(versionBannerDismissedKey) === state.latestVersion) return null
+  if (!ui.state.updateAvailable) return null
+  if (sessionStorage.getItem(versionBannerDismissedKey) === ui.state.latestVersion) return null
 
-  const latest = state.latestVersion ?? 'unknown'
+  const latest = ui.state.latestVersion ?? 'unknown'
   const current = __VERSION__
 
   return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
@@ -1945,10 +1947,10 @@ const renderUpdateBanner = (): HTMLElement | null => {
 }
 
 const dismissBanner = (): void => {
-  if (state.latestVersion) {
-    sessionStorage.setItem(versionBannerDismissedKey, state.latestVersion)
+  if (ui.state.latestVersion) {
+    sessionStorage.setItem(versionBannerDismissedKey, ui.state.latestVersion)
   }
-  state = { ...state, updateAvailable: false }
+  ui.state = { ...ui.state, updateAvailable: false }
   render()
 }
 
@@ -1957,21 +1959,21 @@ const attachBannerDismiss = (container: HTMLElement): void => {
 }
 
 const syncBanner = (): void => {
-  if (!bannerWrapper) return
+  if (!shell.bannerWrapper) return
   const newBanner = renderUpdateBanner()
-  const existingBanner = bannerWrapper.querySelector('.update-banner')
+  const existingBanner = shell.bannerWrapper.querySelector('.update-banner')
 
   if (!newBanner && existingBanner) {
     existingBanner.remove()
   } else if (newBanner && !existingBanner) {
-    bannerWrapper.replaceChildren(newBanner)
-    attachBannerDismiss(bannerWrapper)
+    shell.bannerWrapper.replaceChildren(newBanner)
+    attachBannerDismiss(shell.bannerWrapper)
   } else if (newBanner && existingBanner) {
     const newStrong = newBanner.querySelector('strong')?.textContent
     const oldStrong = existingBanner.querySelector('strong')?.textContent
     if (newStrong && newStrong !== oldStrong) {
-      bannerWrapper.replaceChildren(newBanner)
-      attachBannerDismiss(bannerWrapper)
+      shell.bannerWrapper.replaceChildren(newBanner)
+      attachBannerDismiss(shell.bannerWrapper)
     }
   }
 }
@@ -1980,44 +1982,44 @@ const syncBanner = (): void => {
 // that gets rebuilt on each 2s refresh cycle.
 const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
   // Pre-compute filtered + sorted + paged sessions for the grid
-  const gridEligible = state.sessions.filter((session) => {
-    if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+  const gridEligible = ui.state.sessions.filter((session) => {
+    if (ui.state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
     if (isSessionStateExcluded(session)) return false
-    if (state.selectedRepo) {
-      const project = findUsageProject(session, state.usage)
-      return project?.project === state.selectedRepo
+    if (ui.state.selectedRepo) {
+      const project = findUsageProject(session, ui.state.usage)
+      return project?.project === ui.state.selectedRepo
     }
     return true
   })
-  const sorted = sortSessions(gridEligible, state.sortMode)
+  const sorted = sortSessions(gridEligible, ui.state.sortMode)
   const { page: pagedSessions, currentPage } = paginateSessions(
     sorted,
-    state.pageSize,
-    state.pageIndex,
+    ui.state.pageSize,
+    ui.state.pageIndex,
   )
   // Clamp pageIndex if it drifted out of bounds after a filter change
   const safePageIndex = currentPage - 1
-  if (safePageIndex !== state.pageIndex) {
-    state = { ...state, pageIndex: safePageIndex }
+  if (safePageIndex !== ui.state.pageIndex) {
+    ui.state = { ...ui.state, pageIndex: safePageIndex }
   }
 
   return [
-    renderUsage(state.usage),
-    state.usage?.available ? renderRepoExplorer(state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
+    renderUsage(ui.state.usage),
+    ui.state.usage?.available ? renderRepoExplorer(ui.state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
       createElement('h2', {}, ['Costs by repo']),
       createElement('p', {}, ['ccusage data is not available.']),
     ]),
     createElement('section', { class: 'summary', 'aria-label': 'Status summary' }, [
       ...(['finished', 'idle', 'working', 'attention'] as const).map((status) =>
-        createElement('div', { class: `summary__item summary__item--${statusToColor[status]}${state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
-          createElement('span', {}, [statusLabels[status], state.excludedStates.has(status) ? ' (hidden)' : '']),
-          createElement('strong', {}, [String(state.sessions.filter((session) => {
+        createElement('div', { class: `summary__item summary__item--${statusToColor[status]}${ui.state.excludedStates.has(status) ? ' summary__item--dimmed' : ''}` }, [
+          createElement('span', {}, [statusLabels[status], ui.state.excludedStates.has(status) ? ' (hidden)' : '']),
+          createElement('strong', {}, [String(ui.state.sessions.filter((session) => {
             if (session.status !== status) return false
-            if (state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
+            if (ui.state.excludedRepos.size > 0 && isSessionExcluded(session)) return false
             if (isSessionStateExcluded(session)) return false
-            if (state.selectedRepo) {
-              const project = findUsageProject(session, state.usage)
-              return project?.project === state.selectedRepo
+            if (ui.state.selectedRepo) {
+              const project = findUsageProject(session, ui.state.usage)
+              return project?.project === ui.state.selectedRepo
             }
             return true
           }).length)]),
@@ -2025,10 +2027,10 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
             class: 'summary__item__exclude',
             type: 'button',
             'data-exclude-state': status,
-            'aria-label': state.excludedStates.has(status)
+            'aria-label': ui.state.excludedStates.has(status)
               ? `Show ${statusLabels[status]} sessions again`
               : `Hide ${statusLabels[status]} sessions`,
-            title: state.excludedStates.has(status)
+            title: ui.state.excludedStates.has(status)
               ? `Show ${statusLabels[status]} sessions again`
               : `Hide ${statusLabels[status]} sessions from the grid`,
           }, ['✕']),
@@ -2036,7 +2038,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
       ),
     ]),
     ...(() => { const s = renderExcludedStatesSection(); return s ? [s] : [] })(),
-    ...(state.sessions.length === 0
+    ...(ui.state.sessions.length === 0
       ? [createElement('section', { class: 'empty' }, [
           createElement('h2', {}, ['No sessions registered']),
           createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
@@ -2076,21 +2078,21 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
 const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-cost-window]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null, pageIndex: 0 }
+      ui.state = { ...ui.state, costWindow: button.dataset.costWindow as CostWindow, selectedRepo: null, pageIndex: 0 }
       render()
     })
   })
 
   document.querySelectorAll<HTMLElement>('[data-repo]').forEach((card) => {
     card.addEventListener('click', () => {
-      state = { ...state, selectedRepo: card.dataset.repo ?? null, pageIndex: 0 }
+      ui.state = { ...ui.state, selectedRepo: card.dataset.repo ?? null, pageIndex: 0 }
       render()
     })
   })
 
   document.querySelectorAll<HTMLButtonElement>('[data-repo-back]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, selectedRepo: null, pageIndex: 0 }
+      ui.state = { ...ui.state, selectedRepo: null, pageIndex: 0 }
       render()
     })
   })
@@ -2100,13 +2102,13 @@ const attachBodyEvents = (): void => {
       event.stopPropagation()
       const repo = button.dataset.excludeRepo
       if (!repo) return
-      const next = new Set(state.excludedRepos)
+      const next = new Set(ui.state.excludedRepos)
       next.add(repo)
       saveExcludedRepos(next)
-      state = {
-        ...state,
+      ui.state = {
+        ...ui.state,
         excludedRepos: next,
-        selectedRepo: state.selectedRepo === repo ? null : state.selectedRepo,
+        selectedRepo: ui.state.selectedRepo === repo ? null : ui.state.selectedRepo,
         pageIndex: 0,
       }
       render()
@@ -2116,11 +2118,11 @@ const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-unexclude-repo]').forEach((button) => {
     button.addEventListener('click', () => {
       const fullKey = button.dataset.unexcludeRepo
-      if (!fullKey || !state.excludedRepos.has(fullKey)) return
-      const next = new Set(state.excludedRepos)
+      if (!fullKey || !ui.state.excludedRepos.has(fullKey)) return
+      const next = new Set(ui.state.excludedRepos)
       next.delete(fullKey)
       saveExcludedRepos(next)
-      state = { ...state, excludedRepos: next, pageIndex: 0 }
+      ui.state = { ...ui.state, excludedRepos: next, pageIndex: 0 }
       render()
     })
   })
@@ -2130,14 +2132,14 @@ const attachBodyEvents = (): void => {
       event.stopPropagation()
       const status = button.dataset.excludeState as SessionStatus | undefined
       if (!status || !['finished', 'idle', 'working', 'attention'].includes(status)) return
-      const next = new Set(state.excludedStates)
+      const next = new Set(ui.state.excludedStates)
       if (next.has(status)) {
         next.delete(status)
       } else {
         next.add(status)
       }
       saveExcludedStates(next)
-      state = { ...state, excludedStates: next, pageIndex: 0 }
+      ui.state = { ...ui.state, excludedStates: next, pageIndex: 0 }
       render()
     })
   })
@@ -2145,11 +2147,11 @@ const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-unexclude-state]').forEach((button) => {
     button.addEventListener('click', () => {
       const status = button.dataset.unexcludeState as SessionStatus | undefined
-      if (!status || !state.excludedStates.has(status)) return
-      const next = new Set(state.excludedStates)
+      if (!status || !ui.state.excludedStates.has(status)) return
+      const next = new Set(ui.state.excludedStates)
       next.delete(status)
       saveExcludedStates(next)
-      state = { ...state, excludedStates: next, pageIndex: 0 }
+      ui.state = { ...ui.state, excludedStates: next, pageIndex: 0 }
       render()
     })
   })
@@ -2158,7 +2160,7 @@ const attachBodyEvents = (): void => {
   document.querySelectorAll<HTMLButtonElement>('[data-sort]').forEach((button) => {
     button.addEventListener('click', () => {
       const sortMode = button.dataset.sort as SortMode
-      state = { ...state, sortMode, pageIndex: 0 }
+      ui.state = { ...ui.state, sortMode, pageIndex: 0 }
       render()
     })
   })
@@ -2168,7 +2170,7 @@ const attachBodyEvents = (): void => {
     button.addEventListener('click', () => {
       const pageSize = Number(button.dataset.pageSize)
       if (Number.isNaN(pageSize) || pageSize <= 0) return
-      state = { ...state, pageSize, pageIndex: 0 }
+      ui.state = { ...ui.state, pageSize, pageIndex: 0 }
       render()
     })
   })
@@ -2176,8 +2178,8 @@ const attachBodyEvents = (): void => {
   // ── Page navigation ──
   document.querySelectorAll<HTMLButtonElement>('[data-page="prev"]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (state.pageIndex > 0) {
-        state = { ...state, pageIndex: state.pageIndex - 1 }
+      if (ui.state.pageIndex > 0) {
+        ui.state = { ...ui.state, pageIndex: ui.state.pageIndex - 1 }
         render()
       }
     })
@@ -2185,7 +2187,7 @@ const attachBodyEvents = (): void => {
 
   document.querySelectorAll<HTMLButtonElement>('[data-page="next"]').forEach((button) => {
     button.addEventListener('click', () => {
-      state = { ...state, pageIndex: state.pageIndex + 1 }
+      ui.state = { ...ui.state, pageIndex: ui.state.pageIndex + 1 }
       render()
     })
   })
@@ -2193,34 +2195,34 @@ const attachBodyEvents = (): void => {
 }
 
 const render = (): void => {
-  if (firstRender) {
+  if (shell.firstRender) {
     // ── First render: create persistent containers ──
-    bannerWrapper = createElement('div', { id: 'app-banner' })
-    shellEl = createElement('main', { class: 'shell' })
-    headerEl = createElement('header', { class: 'header' })
-    bodyWrapper = createElement('div', { id: 'app-body' })
+    shell.bannerWrapper = createElement('div', { id: 'app-banner' })
+    shell.shellEl = createElement('main', { class: 'shell' })
+    shell.headerEl = createElement('header', { class: 'header' })
+    shell.bodyWrapper = createElement('div', { id: 'app-body' })
 
     // Build header content
     const banner = renderUpdateBanner()
     if (banner) {
-      bannerWrapper.append(banner)
-      attachBannerDismiss(bannerWrapper)
+      shell.bannerWrapper.append(banner)
+      attachBannerDismiss(shell.bannerWrapper)
     }
 
-    alertControlsRoot = buildAlertControls()
-    headerEl.append(
+    panels.alertControlsRoot = buildAlertControls()
+    shell.headerEl.append(
       createElement('div', {}, [
         createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
         createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
       ]),
-      alertControlsRoot,
+      panels.alertControlsRoot,
     )
 
-    shellEl.append(headerEl, bodyWrapper)
-    root.replaceChildren(...[bannerWrapper, shellEl].filter((el): el is HTMLElement => el !== null))
+    shell.shellEl.append(shell.headerEl, shell.bodyWrapper)
+    root.replaceChildren(...[shell.bannerWrapper, shell.shellEl].filter((el): el is HTMLElement => el !== null))
 
     // Initial body content
-    bodyWrapper.replaceChildren(...buildBodyContent())
+    shell.bodyWrapper.replaceChildren(...buildBodyContent())
 
     // One-time alert-control event listeners
     attachAlertControlEvents()
@@ -2229,27 +2231,27 @@ const render = (): void => {
     attachBodyEvents()
 
     // Show notify panel if already open at startup
-    if (state.notifySettingsOpen && state.notifySettings) {
-      notifyPanelEl = buildNotifyPanel(state.notifySettings)
-      alertControlsRoot.append(notifyPanelEl)
+    if (ui.state.notifySettingsOpen && ui.state.notifySettings) {
+      panels.notifyPanel = buildNotifyPanel(ui.state.notifySettings)
+      panels.alertControlsRoot.append(panels.notifyPanel)
       attachNotifyPanelEvents()
     }
 
     // Show beep panel if already open at startup
-    if (state.beepSettingsOpen && state.beepSettings) {
-      beepPanelEl = buildBeepPanel(state.beepSettings)
-      alertControlsRoot.append(beepPanelEl)
+    if (ui.state.beepSettingsOpen && ui.state.beepSettings) {
+      panels.beepPanel = buildBeepPanel(ui.state.beepSettings)
+      panels.alertControlsRoot.append(panels.beepPanel)
       attachBeepPanelEvents()
     }
 
     // Show hooks panel if already open at startup
-    if (state.hooksSettingsOpen && state.hooksSettings) {
-      hooksPanelEl = buildHooksPanel(state.hooksSettings)
-      alertControlsRoot.append(hooksPanelEl)
+    if (ui.state.hooksSettingsOpen && ui.state.hooksSettings) {
+      panels.hooksPanel = buildHooksPanel(ui.state.hooksSettings)
+      panels.alertControlsRoot.append(panels.hooksPanel)
       attachHooksPanelEvents()
     }
 
-    firstRender = false
+    shell.firstRender = false
     return
   }
 
@@ -2258,17 +2260,17 @@ const render = (): void => {
   syncAlertControlsInPlace()
 
   // Capture open state of <details> elements before rebuild
-  const prevOpenRepos = bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.hasAttribute('open') ?? false
-  const prevOpenStates = bodyWrapper!.querySelector('details.excluded-details--states')?.hasAttribute('open') ?? false
+  const prevOpenRepos = shell.bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.hasAttribute('open') ?? false
+  const prevOpenStates = shell.bodyWrapper!.querySelector('details.excluded-details--states')?.hasAttribute('open') ?? false
 
-  bodyWrapper!.replaceChildren(...buildBodyContent())
+  shell.bodyWrapper!.replaceChildren(...buildBodyContent())
 
   // Restore open state after rebuild
   if (prevOpenRepos) {
-    bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.setAttribute('open', '')
+    shell.bodyWrapper!.querySelector('details.excluded-details:not(.excluded-details--states)')?.setAttribute('open', '')
   }
   if (prevOpenStates) {
-    bodyWrapper!.querySelector('details.excluded-details--states')?.setAttribute('open', '')
+    shell.bodyWrapper!.querySelector('details.excluded-details--states')?.setAttribute('open', '')
   }
 
   attachBodyEvents()
@@ -2277,7 +2279,7 @@ const render = (): void => {
 const refresh = async (): Promise<void> => {
   try {
     const nextState = await loadState()
-    state = handleAlertState({ ...state, ...nextState })
+    ui.state = handleAlertState({ ...ui.state, ...nextState })
     render()
   } catch (error) {
     console.error(error)
@@ -2287,7 +2289,7 @@ const refresh = async (): Promise<void> => {
 const refreshUsage = async (): Promise<void> => {
   try {
     const usage = await loadUsage()
-    state = { ...state, usage }
+    ui.state = { ...ui.state, usage }
     render()
   } catch (error) {
     console.error(error)
@@ -2297,8 +2299,8 @@ const refreshUsage = async (): Promise<void> => {
 const refreshVersion = async (): Promise<void> => {
   try {
     const info = await loadVersion()
-    if (info.latestVersion !== state.latestVersion) {
-      state = { ...state, updateAvailable: info.updateAvailable, latestVersion: info.latestVersion }
+    if (info.latestVersion !== ui.state.latestVersion) {
+      ui.state = { ...ui.state, updateAvailable: info.updateAvailable, latestVersion: info.latestVersion }
       render()
     }
   } catch (error) {
@@ -2309,8 +2311,8 @@ const refreshVersion = async (): Promise<void> => {
 const refreshHooks = async (): Promise<void> => {
   try {
     const settings = await loadHookSettings()
-    if (JSON.stringify(settings) !== JSON.stringify(state.hooksSettings)) {
-      state = { ...state, hooksSettings: settings }
+    if (JSON.stringify(settings) !== JSON.stringify(ui.state.hooksSettings)) {
+      ui.state = { ...ui.state, hooksSettings: settings }
       render()
     }
   } catch (error) {
@@ -2326,11 +2328,11 @@ declare global {
 
 Promise.all([
   loadNotifySettings().then(settings => {
-    state = { ...state, notifySettings: settings }
+    ui.state = { ...ui.state, notifySettings: settings }
   }),
   loadBeepSettings().then(settings => {
-    state = {
-      ...state,
+    ui.state = {
+      ...ui.state,
       beepSettings: settings,
       audioEnabled: false, // always start muted — browsers require user gesture for AudioContext
       redAlertAfterOverrideMs: settings.alertAfterMs,
@@ -2340,10 +2342,10 @@ Promise.all([
   // Hooks status is loaded optimistically — failures (e.g. Docker without
   // filesystem access) are surfaced in the UI via the error field.
   loadHookSettings().then(settings => {
-    state = { ...state, hooksSettings: settings }
+    ui.state = { ...ui.state, hooksSettings: settings }
   }).catch(() => {
-    state = {
-      ...state,
+    ui.state = {
+      ...ui.state,
       hooksSettings: {
         installed: false,
         configLocation: 'none',
