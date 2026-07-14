@@ -117,7 +117,15 @@ export const buildNotifyPanel = (s: NotifySettingsUI): HTMLElement =>
     createElement('button', { id: 'notify-save', type: 'button' }, ['Save Settings']),
   ])
 
+let lastSyncedNotifySettings: NotifySettingsUI | null = null
+
 export const syncNotifyPanelFields = (panel: HTMLElement, s: NotifySettingsUI): void => {
+  // Skip sync when settings haven't changed (reference equality).
+  // The 2s poll preserves the same object via spread; only load/save
+  // replaces it, so this avoids clobbering in-progress user edits.
+  if (lastSyncedNotifySettings === s) return
+  lastSyncedNotifySettings = s
+
   const enabled = s.enabled
   syncCheckbox(panel.querySelector<HTMLInputElement>('#notify-enabled'), enabled)
   syncTextLike(panel.querySelector<HTMLInputElement>('#notify-webhook-url'), s.webhookUrl)

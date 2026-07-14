@@ -101,7 +101,15 @@ export const buildBeepPanel = (s: BeepSettingsUI): HTMLElement =>
     createElement('button', { id: 'beep-save', 'data-testid': 'beep-save', type: 'button' }, ['Save Settings']),
   ])
 
+let lastSyncedBeepSettings: BeepSettingsUI | null = null
+
 export const syncBeepPanelFields = (panel: HTMLElement, s: BeepSettingsUI): void => {
+  // Skip sync when settings haven't changed (reference equality).
+  // The 2s poll preserves the same object via spread; only load/save
+  // replaces it, so this avoids clobbering in-progress user edits.
+  if (lastSyncedBeepSettings === s) return
+  lastSyncedBeepSettings = s
+
   const enabled = s.enabled
   syncCheckbox(panel.querySelector<HTMLInputElement>('#beep-enabled'), enabled)
   syncTextLike(
