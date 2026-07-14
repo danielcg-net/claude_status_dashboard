@@ -63,7 +63,7 @@ const makeUpdateButton = (sync: () => void): HTMLButtonElement => {
   const btn = document.createElement('button')
   btn.className = 'update-banner__action'
   btn.type = 'button'
-  btn.textContent = 'Update'
+  btn.textContent = 'How to update'
   btn.addEventListener('click', async () => {
     try {
       const result = await triggerUpdate()
@@ -142,8 +142,6 @@ const buildInstructionsBanner = (command: string, onDismiss: () => void): HTMLEl
 }
 
 // ── Sync ────────────────────────────────────────────────────────
-
-export const renderUpdateBanner = (): HTMLElement | null => null
 
 export const syncBanner = (bannerWrapper: HTMLElement, onDismiss: () => void): void => {
   const sync = (): void => syncBanner(bannerWrapper, onDismiss)

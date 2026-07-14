@@ -6,7 +6,7 @@ import { createElement } from './ui-dom.js'
 import { ui } from './ui-state.js'
 import type { AppState, CostWindow, SessionStatus, SortMode } from './ui-types.js'
 import { statusLabels, statusToColor } from './ui-types.js'
-import { renderUpdateBanner, syncBanner } from './ui-banner.js'
+import { syncBanner } from './ui-banner.js'
 import { renderUsage } from './ui-render-usage.js'
 import {
   findUsageProject,
@@ -415,19 +415,6 @@ export const render = (): void => {
     shell.shellEl = createElement('main', { class: 'shell' })
     shell.headerEl = createElement('header', { class: 'header' })
     shell.bodyWrapper = createElement('div', { id: 'app-body' })
-
-    // Build header content
-    const banner = renderUpdateBanner()
-    if (banner) {
-      shell.bannerWrapper.append(banner)
-      shell.bannerWrapper.querySelector('.update-banner__dismiss')?.addEventListener('click', () => {
-        if (ui.state.latestVersion) {
-          sessionStorage.setItem('version-banner-dismissed', ui.state.latestVersion)
-        }
-        ui.state = { ...ui.state, updateAvailable: false }
-        render()
-      })
-    }
 
     panels.alertControlsRoot = buildAlertControls()
     shell.headerEl.append(

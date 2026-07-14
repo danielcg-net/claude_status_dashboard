@@ -1,21 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-
-// Hoist mocks before module import
-const { __resetDeploymentCache, detectDeployment } = await vi.hoisted(async () => {
-  const mod = await vi.importActual<typeof import('../src/deployment.js')>('../src/deployment.js')
-  return mod
-})
-
-// Re-import after hoisting for test access
-const deploymentMod = await import('../src/deployment.js')
-const detect = deploymentMod.detectDeployment
-const resetCache = deploymentMod.__resetDeploymentCache
+import { describe, it, expect, beforeEach } from 'vitest'
+import { detectDeployment as detect, __resetDeploymentCache as resetCache } from '../src/deployment.js'
 
 describe('detectDeployment', () => {
   beforeEach(() => {
     delete process.env.CLAUDE_CONFIG_DIR
     delete process.env.DATA_DIR
-    vi.resetModules()
     resetCache()
   })
 

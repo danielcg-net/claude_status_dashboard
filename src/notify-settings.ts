@@ -39,7 +39,9 @@ export const loadNotifySettings = async (dataDir: string): Promise<NotifySetting
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     console.error(`Failed to load notify settings (${filePath}):`, error)
     // Rename corrupt file so it doesn't block future starts.
-    await rename(filePath, `${filePath}.corrupt`).catch(() => undefined)
+    await rename(filePath, `${filePath}.corrupt`).catch((err) =>
+      console.warn(`Failed to rename corrupt notify settings:`, err),
+    )
     return null
   }
 }

@@ -61,7 +61,6 @@ beforeEach(async () => {
   mockNotify.mockClear()
   mockExecSync.mockReset()
   mockDetectDeployment.mockReturnValue({ mode: 'npm' as const })
-  vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
 })
 
 describe('GET /api/health', () => {
