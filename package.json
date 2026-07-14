@@ -32,7 +32,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "claude-status-dashboard": "./bin/cli.js"
+    "claude-status-dashboard": "bin/cli.js"
   },
   "files": [
     "bin/",

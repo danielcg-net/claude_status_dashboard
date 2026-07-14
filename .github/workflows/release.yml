@@ -42,6 +42,14 @@ jobs:
         if: steps.check-tag.outputs.exists == 'false'
         run: npm ci
 
+      - name: Debug OIDC identity
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Server URL: ${{ github.server_url }}"
+
       - name: Publish to npm
         if: steps.check-tag.outputs.exists == 'false'
         run: npm publish
