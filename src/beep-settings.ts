@@ -33,6 +33,10 @@ export const loadBeepSettings = async (dataDir: string): Promise<BeepSettings | 
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     console.error(`Failed to load beep settings (${filePath}):`, error)
+    // Rename corrupt file so it doesn't block future starts.
+    await rename(filePath, `${filePath}.corrupt`).catch((err) =>
+      console.warn(`Failed to rename corrupt beep settings:`, err),
+    )
     return null
   }
 }

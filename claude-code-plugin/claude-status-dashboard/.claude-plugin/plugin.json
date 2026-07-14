@@ -1,6 +1,6 @@
 {
   "name": "claude-status-dashboard",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Reports Claude Code session status to a local Claude Status Dashboard.",
   "author": {
     "name": "danielcg-net"

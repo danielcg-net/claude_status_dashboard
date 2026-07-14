@@ -6,7 +6,7 @@ import { createElement } from './ui-dom.js'
 import { ui } from './ui-state.js'
 import type { AppState, CostWindow, SessionStatus, SortMode } from './ui-types.js'
 import { statusLabels, statusToColor } from './ui-types.js'
-import { renderUpdateBanner, syncBanner } from './ui-banner.js'
+import { syncBanner } from './ui-banner.js'
 import { renderUsage } from './ui-render-usage.js'
 import {
   findUsageProject,
@@ -240,33 +240,39 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
     ]),
     ...(() => { const s = renderExcludedStatesSection(); return s ? [s] : [] })(),
     ...(ui.state.sessions.length === 0
-      ? [createElement('section', { class: 'empty' }, [
-          createElement('h2', {}, ['No sessions registered']),
-          createElement('p', {}, ['Add the dashboard hook to ', createElement('code', {}, ['~/.claude/settings.json']), ':']),
-          createElement('pre', { class: 'empty__snippet' }, [
-            '{\n',
-            '  "hooks": {\n',
-            '    "SessionStart": [{ "matcher": ".*", "hooks": [{\n',
-            '      "type": "command",\n',
-            '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-            '      "timeout": 5\n',
-            '    }] }],\n',
-            '    "Stop": [{ "matcher": ".*", "hooks": [{\n',
-            '      "type": "command",\n',
-            '      "command": "bash <repo>/hooks/claude-status-dashboard.sh",\n',
-            '      "timeout": 5\n',
-            '    }] }]\n',
-            '  }\n',
-            '}',
-          ]),
-          createElement('p', {}, ['Replace ', createElement('code', {}, ['<repo>']), ' with the path to this project.']),
-          createElement('p', {}, ['Or test with curl:']),
-          createElement('pre', { class: 'empty__snippet' }, [
-            'curl -X POST http://localhost:8787/api/sessions \\\n',
-            '  -H "Content-Type: application/json" \\\n',
-            `  -d '{"name":"test","status":"orange"}'`,
-          ]),
-        ])]
+      ? [createElement('section', { class: 'empty' }, (() => {
+          const hooksInstalled = ui.state.hooksSettings?.installed === true
+
+          if (hooksInstalled) {
+            return [
+              createElement('h2', {}, ['No sessions registered']),
+              createElement('p', {}, [
+                'Hooks are installed and working. Open Claude Code in any project — sessions will appear here automatically.',
+              ]),
+              createElement('p', { class: 'empty__or' }, ['Or test with curl:']),
+              createElement('pre', { class: 'empty__snippet' }, [
+                'curl -X POST http://localhost:8787/api/sessions \\\n',
+                '  -H "Content-Type: application/json" \\\n',
+                `  -d '{"name":"test","status":"orange"}'`,
+              ]),
+            ]
+          }
+
+          return [
+            createElement('h2', {}, ['No sessions registered']),
+            createElement('p', {}, [
+              'Click ',
+              createElement('strong', {}, ['Hooks']),
+              ' in the toolbar above to install the Claude Code plugin — sessions will appear here automatically.',
+            ]),
+            createElement('p', { class: 'empty__or' }, ['Or test with curl:']),
+            createElement('pre', { class: 'empty__snippet' }, [
+              'curl -X POST http://localhost:8787/api/sessions \\\n',
+              '  -H "Content-Type: application/json" \\\n',
+              `  -d '{"name":"test","status":"orange"}'`,
+            ]),
+          ]
+        })())]
       : [
           renderSessionToolbar(gridEligible.length) as HTMLElement,
           createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
@@ -410,23 +416,19 @@ export const render = (): void => {
     shell.headerEl = createElement('header', { class: 'header' })
     shell.bodyWrapper = createElement('div', { id: 'app-body' })
 
-    // Build header content
-    const banner = renderUpdateBanner()
-    if (banner) {
-      shell.bannerWrapper.append(banner)
-      shell.bannerWrapper.querySelector('.update-banner__dismiss')?.addEventListener('click', () => {
-        if (ui.state.latestVersion) {
-          sessionStorage.setItem('version-banner-dismissed', ui.state.latestVersion)
-        }
-        ui.state = { ...ui.state, updateAvailable: false }
-        render()
-      })
-    }
-
     panels.alertControlsRoot = buildAlertControls()
     shell.headerEl.append(
       createElement('div', {}, [
-        createElement('p', { class: 'eyebrow' }, ['Local Claude Code monitor']),
+        createElement('p', { class: 'eyebrow' }, [
+          'Local Claude Code monitor',
+          createElement('a', {
+            class: 'help-link',
+            href: 'https://github.com/danielcg-net/claude_status_dashboard#readme',
+            target: '_blank',
+            rel: 'noopener',
+            title: 'Help & documentation',
+          }, ['Help']),
+        ]),
         createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
       ]),
       panels.alertControlsRoot,

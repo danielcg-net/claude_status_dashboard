@@ -27,6 +27,8 @@ export const initialState: AppState = {
   hooksSettings: null,
   hooksSettingsOpen: false,
   seenSessionIds: new Set<string>(),
+  updateInProgress: false,
+  deploymentMessage: null,
   sortMode: 'updatedAt-desc',
   pageSize: 10,
   pageIndex: 0,
