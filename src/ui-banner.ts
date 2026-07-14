@@ -7,7 +7,11 @@ import { showToast } from './ui-toast.js'
 
 declare const __VERSION__: string
 
-const versionBannerDismissedKey = 'version-banner-dismissed'
+const versionBannerDismissedUntilKey = 'version-banner-dismissed-until'
+const versionBannerSkippedKey = 'version-banner-skipped'
+
+// Temporary dismissal: banner stays hidden for this many ms after clicking ✕
+const TEMPORARY_DISMISS_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 // ── Shared helpers ──────────────────────────────────────────────
 
@@ -44,12 +48,30 @@ const makeDismissButton = (onDismiss: () => void): HTMLButtonElement => {
   const btn = document.createElement('button')
   btn.className = 'update-banner__dismiss'
   btn.type = 'button'
-  btn.setAttribute('aria-label', 'Dismiss update notification')
-  btn.title = 'Dismiss'
+  btn.setAttribute('aria-label', 'Dismiss temporarily (banner will reappear later)')
+  btn.title = 'Dismiss temporarily'
   btn.textContent = '✕'
   btn.addEventListener('click', () => {
+    localStorage.setItem(
+      versionBannerDismissedUntilKey,
+      String(Date.now() + TEMPORARY_DISMISS_MS),
+    )
+    ui.state = { ...ui.state, updateAvailable: false, deploymentMessage: null }
+    onDismiss()
+  })
+  return btn
+}
+
+const makeSkipButton = (onDismiss: () => void): HTMLButtonElement => {
+  const btn = document.createElement('button')
+  btn.className = 'update-banner__skip'
+  btn.type = 'button'
+  btn.setAttribute('aria-label', 'Skip this version permanently')
+  btn.title = 'Skip this version'
+  btn.textContent = 'Skip this version'
+  btn.addEventListener('click', () => {
     if (ui.state.latestVersion) {
-      sessionStorage.setItem(versionBannerDismissedKey, ui.state.latestVersion)
+      localStorage.setItem(versionBannerSkippedKey, ui.state.latestVersion)
     }
     ui.state = { ...ui.state, updateAvailable: false, deploymentMessage: null }
     onDismiss()
@@ -81,6 +103,7 @@ const buildBanner = (sync: () => void, onDismiss: () => void): HTMLElement => {
   const current = __VERSION__
 
   const actionBtn = makeUpdateButton(sync)
+  const skipBtn = makeSkipButton(onDismiss)
   const dismissBtn = makeDismissButton(onDismiss)
 
   return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
@@ -103,6 +126,7 @@ const buildBanner = (sync: () => void, onDismiss: () => void): HTMLElement => {
         actionBtn,
       ]),
     ]),
+    skipBtn,
     dismissBtn,
   ])
 }
@@ -146,9 +170,17 @@ const buildInstructionsBanner = (command: string, onDismiss: () => void): HTMLEl
 export const syncBanner = (bannerWrapper: HTMLElement, onDismiss: () => void): void => {
   const sync = (): void => syncBanner(bannerWrapper, onDismiss)
 
-  const dismissed =
+  // Permanent skip: user explicitly clicked "Skip this version"
+  const permanentlySkipped =
     !ui.state.deploymentMessage &&
-    sessionStorage.getItem(versionBannerDismissedKey) === ui.state.latestVersion
+    localStorage.getItem(versionBannerSkippedKey) === ui.state.latestVersion
+
+  // Temporary dismiss: user clicked ✕ — applies for TEMPORARY_DISMISS_MS
+  const temporarilyDismissed =
+    !ui.state.deploymentMessage &&
+    Number(localStorage.getItem(versionBannerDismissedUntilKey) || '0') > Date.now()
+
+  const dismissed = permanentlySkipped || temporarilyDismissed
 
   if (!ui.state.updateAvailable && !ui.state.deploymentMessage) {
     bannerWrapper.replaceChildren()

@@ -1335,6 +1335,26 @@ h1 {
   background: rgba(125, 183, 255, 0.22);
 }
 
+.update-banner__skip {
+  flex: 0 0 auto;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.update-banner__skip:hover {
+  border-color: var(--muted);
+  color: var(--text);
+  background: var(--panel-strong);
+}
+
 .update-banner__action:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -1398,6 +1418,23 @@ h1 {
 .audio-toggle--active {
   border-color: var(--blue);
   color: var(--text);
+}
+
+.audio-toggle--warn {
+  border-color: var(--red);
+  color: var(--red);
+  animation: pulse-warn 2s ease-in-out infinite;
+}
+
+.audio-toggle--warn:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(255, 77, 94, 0.12);
+}
+
+@keyframes pulse-warn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 94, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 77, 94, 0); }
 }
 
 /* ── Notification settings floating panel ─────────── */
