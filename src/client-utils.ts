@@ -211,3 +211,70 @@ export const daysForWindow = (days: readonly UsageDay[], costWindow: CostWindow)
   const cutoffDate = utcDateString(cutoff)
   return days.filter((day) => day.date >= cutoffDate)
 }
+
+// ── Usage aggregation helpers ──────────────────────────────────────────────────
+
+export const recentUsageDays = (days: readonly UsageDay[]): readonly UsageDay[] =>
+  [...days]
+    .filter((day) => day.totalCost > 0 || day.totalTokens > 0)
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, 5)
+
+export const aggregateModelBreakdowns = (
+  days: readonly UsageDay[],
+  costWindow: CostWindow,
+): readonly { modelName: string; cost: number }[] => {
+  const windowDays = daysForWindow(days, costWindow)
+  const byModel = windowDays
+    .flatMap((day) => day.modelBreakdowns)
+    .reduce((map, breakdown) => {
+      map.set(breakdown.modelName, (map.get(breakdown.modelName) ?? 0) + breakdown.cost)
+      return map
+    }, new Map<string, number>())
+  return [...byModel.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([modelName, cost]) => ({ modelName, cost }))
+}
+
+// ── Project name utilities ─────────────────────────────────────────────────────
+
+export const normalizeProjectKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+export const shortProjectName = (projectKey: string): string => {
+  // ccusage keys look like: -Users-name-Private-Projects-dir-name
+  // or -Users-name-dir-name. Find the last known path prefix and
+  // take everything after it. This preserves dashes in dir names.
+  // Only use long, specific prefixes to avoid false positives.
+  const prefixes = ['-Private-Projects-', '-Projects-']
+  // Find the rightmost matching prefix via functional reduction
+  const best = prefixes.reduce(
+    (found, prefix) => {
+      const idx = projectKey.lastIndexOf(prefix)
+      return idx > found.idx ? { idx, prefix } : found
+    },
+    { idx: -1, prefix: '' },
+  )
+  if (best.idx >= 0) {
+    return projectKey.slice(best.idx + best.prefix.length)
+  }
+  // Fallback: for Linux/macOS paths like -home-user-repo or -Users-name-repo,
+  // skip the system dir and username, take the rest.
+  const cleaned = projectKey.replace(/^-+/, '')
+  const parts = cleaned.split('-').filter(Boolean)
+  if (parts.length > 2 && (parts[0] === 'home' || parts[0] === 'Users')) {
+    return parts.slice(2).join('-')
+  }
+  return parts[parts.length - 1] ?? projectKey
+}
+
+export const projectKeyToPath = (projectKey: string): string =>
+  '/' + projectKey.replace(/^-+/, '').split('-').join('/')
+
+export const projectCandidatesFor = (session: Session): readonly string[] =>
+  [session.usageProject, session.id, session.name]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => [value, normalizeProjectKey(value)])

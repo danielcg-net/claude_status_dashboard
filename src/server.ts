@@ -268,8 +268,9 @@ app.put('/api/settings/notify', async (context) => {
   const input = await parseJson(context.req.raw, notifySettingsSchema.partial())
   const updated = { ...rt.state.notifySettings, ...input }
   rt.state = { ...rt.state, notifySettings: updated as NotifySettings }
-  const override: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(input)) { if (v !== undefined) (override as Record<string, unknown>)[k] = v }
+  const override = Object.fromEntries(
+    Object.entries(input).filter(([, v]) => v !== undefined),
+  )
   setNotifyConfig(override as Parameters<typeof setNotifyConfig>[0])
   enqueueSaveNotifySettings()
   return context.json(maskNotifySettings(updated as NotifySettings))
@@ -412,10 +413,10 @@ if (isMain || process.env.NODE_ENV !== 'test') {
     if (autoIdled.length > 0) {
       rt.state = { ...rt.state, sessions: updated }
       enqueueSave()
-      for (const s of autoIdled) {
+      autoIdled.forEach((s) => {
         console.log(`Auto-idled stale session: ${s.id} (${s.name}) — last update was at ${s.updatedAt}`)
         notify(s.status, s)
-      }
+      })
     }
   }, 60_000)
 

@@ -149,13 +149,16 @@ export const transitionStaleSessions = (
   staleThresholdMs: number,
 ): readonly [SessionStore, Session[]] => {
   const cutoff = Date.now() - staleThresholdMs
-  const autoIdled: Session[] = []
   const next = new Map(sessions)
 
-  for (const [id, session] of next) {
-    if (!TRANSIENT_STATUSES.has(session.status)) continue
-    if (new Date(session.updatedAt).getTime() >= cutoff) continue
+  const staleEntries = [...next.entries()]
+    .filter(([, session]) =>
+      TRANSIENT_STATUSES.has(session.status) &&
+      new Date(session.updatedAt).getTime() < cutoff,
+    )
 
+  const autoIdled: Session[] = []
+  staleEntries.forEach(([id, session]) => {
     const now = new Date().toISOString()
     next.set(id, {
       ...session,
@@ -165,7 +168,7 @@ export const transitionStaleSessions = (
       // updatedAt preserved — keeps the eviction clock honest
     })
     autoIdled.push(next.get(id)!)
-  }
+  })
 
   return autoIdled.length > 0
     ? ([next, autoIdled] as const)

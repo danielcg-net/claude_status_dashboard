@@ -127,34 +127,33 @@ export const downloadHookScript = async (version: string): Promise<string> => {
   const scriptPath = join(dir, HOOK_SCRIPT_NAME)
 
   // `version` is a raw git ref (e.g. 'main', 'v0.5.1', 'feature-branch').
-  // Try it directly first; fall back to main. Collect errors for the final
-  // rejection message rather than mutating a shared variable.
-  const errors: string[] = []
+  // Try it directly first; fall back to main. Uses recursion for functional-style
+  // async sequential URL attempts.
   const urls = [
     `${RAW_URL}/${version}/hooks/${HOOK_SCRIPT_NAME}`,
     `${RAW_URL}/main/hooks/${HOOK_SCRIPT_NAME}`,
   ]
 
-  for (const url of urls) {
+  const tryUrls = async (remaining: readonly string[], errors: readonly string[]): Promise<string> => {
+    if (remaining.length === 0) {
+      throw new Error(`Failed to download hook script: ${errors.join('; ')}`)
+    }
+    const url = remaining[0]!
+    const rest = remaining.slice(1)
     const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
     if (!response.ok) {
-      errors.push(`HTTP ${response.status} from ${url}`)
-      continue
+      return tryUrls(rest, [...errors, `HTTP ${response.status} from ${url}`])
     }
-
     const content = await response.text()
     if (!content.trim()) {
-      errors.push(`Empty response from ${url}`)
-      continue
+      return tryUrls(rest, [...errors, `Empty response from ${url}`])
     }
-
     await mkdir(dir, { recursive: true })
     await writeFile(scriptPath, content, 'utf-8')
     await chmod(scriptPath, 0o755)
     return scriptPath
   }
-
-  throw new Error(`Failed to download hook script: ${errors.join('; ')}`)
+  return tryUrls(urls, [])
 }
 
 // ---------------------------------------------------------------------------
@@ -254,26 +253,26 @@ const checkClaudeSettingsForHooks = async (
   // that references our script. This catches partial installs (e.g. only
   // SessionStart + Stop) as well as full 10-event installs.
   const commandsSeen: string[] = []
-  for (const event of eventNames) {
+  const found = eventNames.some((event) => {
     const matchers = hooksObj[event]
-    if (!Array.isArray(matchers)) continue
-    for (const matcher of matchers) {
-      if (typeof matcher !== 'object' || matcher === null) continue
+    if (!Array.isArray(matchers)) return false
+    return matchers.some((matcher) => {
+      if (typeof matcher !== 'object' || matcher === null) return false
       const entry = matcher as Record<string, unknown>
       const hookList = entry.hooks
-      if (!Array.isArray(hookList)) continue
-      for (const hook of hookList) {
-        if (typeof hook !== 'object' || hook === null) continue
+      if (!Array.isArray(hookList)) return false
+      return hookList.some((hook) => {
+        if (typeof hook !== 'object' || hook === null) return false
         const h = hook as Record<string, unknown>
         if (typeof h.command === 'string') {
           commandsSeen.push(h.command)
-          if (h.command.includes(HOOK_SCRIPT_MATCHER)) {
-            return true
-          }
+          return h.command.includes(HOOK_SCRIPT_MATCHER)
         }
-      }
-    }
-  }
+        return false
+      })
+    })
+  })
+  if (found) return true
 
   console.warn(
     `checkHooks(${label}): ${eventNames.length} event(s) with ${commandsSeen.length} command(s), ` +
@@ -287,28 +286,25 @@ const checkClaudeSettingsForHooks = async (
  * reference the dashboard script. Returns an empty array if the file doesn't
  * exist or has no matching hooks.
  */
+/** Check whether a single matcher entry has a dashboard hook command. */
+const hasDashboardCommand = (matcher: unknown): boolean =>
+  typeof matcher === 'object' && matcher !== null &&
+  Array.isArray((matcher as Record<string, unknown>).hooks) &&
+  ((matcher as Record<string, unknown>).hooks as unknown[]).some((hook) =>
+    typeof hook === 'object' && hook !== null &&
+    typeof (hook as Record<string, unknown>).command === 'string' &&
+    ((hook as Record<string, unknown>).command as string).includes(HOOK_SCRIPT_MATCHER),
+  )
+
 const readHookEventNames = async (filePath: string): Promise<string[]> => {
   const settings = await readSettingsJson(filePath)
   if (!settings?.hooks || typeof settings.hooks !== 'object') return []
 
   const hooksObj = settings.hooks as Record<string, unknown>
-  const found: string[] = []
-  for (const [event, matchers] of Object.entries(hooksObj)) {
-    if (!Array.isArray(matchers)) continue
-    for (const matcher of matchers) {
-      if (typeof matcher !== 'object' || matcher === null) continue
-      const entry = matcher as Record<string, unknown>
-      const hookList = entry.hooks
-      if (!Array.isArray(hookList)) continue
-      for (const hook of hookList) {
-        if (typeof hook !== 'object' || hook === null) continue
-        const h = hook as Record<string, unknown>
-        if (typeof h.command === 'string' && h.command.includes(HOOK_SCRIPT_MATCHER)) {
-          found.push(event)
-        }
-      }
-    }
-  }
+  const found = Object.entries(hooksObj)
+    .filter(([, matchers]) => Array.isArray(matchers))
+    .filter(([, matchers]) => (matchers as unknown[]).some(hasDashboardCommand))
+    .map(([event]) => event)
 
   // Sort to put known lifecycle events first, then any custom ones
   const knownOrder = hookEvents as readonly string[]
@@ -324,17 +320,9 @@ const readHookEventNames = async (filePath: string): Promise<string[]> => {
   return found
 }
 
-/** Merge and deduplicate two event lists, preserving the order of `a`. */
-const mergeEventLists = (a: string[], b: string[]): string[] => {
-  const seen = new Set(a)
-  for (const item of b) {
-    if (!seen.has(item)) {
-      a.push(item)
-      seen.add(item)
-    }
-  }
-  return a
-}
+/** Merge and deduplicate two event lists, preserving insertion order (a first, then new items from b). */
+const mergeEventLists = (a: string[], b: string[]): string[] =>
+  [...new Set([...a, ...b])]
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -462,17 +450,17 @@ export const installHooks = async (
 
   // 2. Build the hook entries for all events
   const hookEntry = buildHookEntry(scriptPath)
-  const newHooks: Record<string, unknown> = {}
-  for (const event of hookEvents) {
-    newHooks[event] = hookEntry
-  }
+  const newHooks: Record<string, unknown> = Object.fromEntries(
+    hookEvents.map((event) => [event, hookEntry]),
+  )
 
   const targetPath = settingsPath(scope)
 
-  // 3. Read-merge-write-verify loop.  Claude Code may be editing the same
+  // 3. Read-merge-write-verify loop. Claude Code may be editing the same
   //    settings.json concurrently; retry with backoff if our write is
   //    overwritten before we can confirm it.
-  for (const attempt of Array(5).keys()) {
+  //    Uses recursion rather than `for...of` for a functional-style async retry.
+  const tryPersist = async (attempt: number): Promise<void> => {
     // Re-read the latest state each attempt
     const existing = (await readSettingsJson(targetPath)) ?? {}
 
@@ -484,7 +472,7 @@ export const installHooks = async (
         ? (existing.hooks as Record<string, unknown>)
         : {}
 
-    for (const event of hookEvents) {
+    hookEvents.forEach((event) => {
       const existingMatchers: unknown[] = Array.isArray(existingHooks[event])
         ? [...(existingHooks[event] as unknown[])]
         : []
@@ -504,7 +492,7 @@ export const installHooks = async (
       })
 
       existingHooks[event] = [...withoutDashboard, ...(newHooks[event] as unknown[])]
-    }
+    })
 
     const mergedHooks = { ...existingHooks }
     const merged = { ...existing, hooks: mergedHooks }
@@ -518,13 +506,15 @@ export const installHooks = async (
     // Overwritten — wait with jittered backoff, then retry with fresh state
     if (attempt < 4) {
       await new Promise((r) => setTimeout(r, 50 * Math.pow(2, attempt) + Math.random() * 30))
+      return tryPersist(attempt + 1)
     }
-  }
 
-  throw new Error(
-    'Failed to persist hooks after 5 attempts. ' +
-    'Another process (e.g. Claude Code) may be locking the settings file.',
-  )
+    throw new Error(
+      'Failed to persist hooks after 5 attempts. ' +
+      'Another process (e.g. Claude Code) may be locking the settings file.',
+    )
+  }
+  await tryPersist(0)
 }
 
 /**
@@ -545,33 +535,33 @@ const stripDashboardHooksFromFile = async (filePath: string): Promise<boolean> =
   // Build a new hooks object with dashboard entries stripped.  Compare the
   // serialised form to detect whether anything changed — avoids mutable flags.
   const originalJson = JSON.stringify(existingHooks)
-  const cleaned: Record<string, unknown> = {}
-
-  for (const [event, matchers] of Object.entries(existingHooks)) {
-    if (!Array.isArray(matchers)) continue
-    const filtered = matchers.reduce<unknown[]>((kept, matcher) => {
-      if (typeof matcher !== 'object' || matcher === null) {
-        kept.push(matcher)
+  const cleaned = Object.entries(existingHooks)
+    .filter(([, matchers]) => Array.isArray(matchers))
+    .reduce<Record<string, unknown>>((acc, [event, matchers]) => {
+      const filtered = (matchers as unknown[]).reduce<unknown[]>((kept, matcher) => {
+        if (typeof matcher !== 'object' || matcher === null) {
+          kept.push(matcher)
+          return kept
+        }
+        const entry = matcher as Record<string, unknown>
+        const hookList = entry.hooks
+        if (!Array.isArray(hookList)) {
+          kept.push(matcher)
+          return kept
+        }
+        const nonDashboard = hookList.filter((hook) => {
+          if (typeof hook !== 'object' || hook === null) return true
+          const h = hook as Record<string, unknown>
+          if (typeof h.command !== 'string') return true
+          return !(h.command as string).includes(HOOK_SCRIPT_MATCHER)
+        })
+        if (nonDashboard.length === 0) return kept // all dashboard — drop matcher
+        kept.push({ ...entry, hooks: nonDashboard })
         return kept
-      }
-      const entry = matcher as Record<string, unknown>
-      const hookList = entry.hooks
-      if (!Array.isArray(hookList)) {
-        kept.push(matcher)
-        return kept
-      }
-      const nonDashboard = hookList.filter((hook) => {
-        if (typeof hook !== 'object' || hook === null) return true
-        const h = hook as Record<string, unknown>
-        if (typeof h.command !== 'string') return true
-        return !(h.command as string).includes(HOOK_SCRIPT_MATCHER)
-      })
-      if (nonDashboard.length === 0) return kept // all dashboard — drop matcher
-      kept.push({ ...entry, hooks: nonDashboard })
-      return kept
-    }, [])
-    if (filtered.length > 0) cleaned[event] = filtered
-  }
+      }, [])
+      if (filtered.length > 0) acc[event] = filtered
+      return acc
+    }, {})
 
   if (JSON.stringify(cleaned) === originalJson) return false // nothing changed
 

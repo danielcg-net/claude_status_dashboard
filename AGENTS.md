@@ -24,7 +24,24 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 - **TypeScript everywhere** — backend (Hono/Node), frontend (Vanilla TS bundled to `public/assets/client.js`). TypeScript strict mode.
 - **Use `??` for null/undefined defaults**, not `||`. The only exception is the `asNumber()` pattern in `src/usage.ts` where `||` is correct for ccusage field fallbacks.
 - **Functional style** — prefer pure functions, immutable data, `readonly` types.
-- **`createElement` helper** for DOM creation in `src/client.ts` — never `innerHTML`.
+- **`createElement` helper** for DOM creation in `src/ui-dom.ts` — never `innerHTML`.
+
+### Loop style
+
+- **Prefer array methods over imperative loops.** Use `forEach`, `map`, `filter`,
+  `reduce`, `find`, `some`, `every`, and `flatMap` instead of `for`, `for...of`,
+  `for...in`, and `while`.
+- **Use `Object.entries()`, `Object.values()`, `Object.keys()`** with array
+  methods instead of `for...in`.
+- **Use `Array.from()` with a mapping callback** instead of index-based loops
+  (`for (let i = 0; ...)`).
+- **Prefer `.find()` / `.some()` for early-exit search** over a `for...of` loop
+  with `break` or `return`.
+- **Use `.reduce()` for accumulation patterns** — building Maps, summing fields,
+  merging objects — instead of a `for...of` with a mutable accumulator.
+- **Rare exceptions**: tight performance-sensitive loops (profile first), or
+  async iteration where Promise-based alternatives would be less readable.
+  When you use an exception, add a comment explaining why.
 - **CSS custom properties** from `:root` only, dark theme.
 - **Zod schemas** in `src/domain.ts` for API input validation.
 - **ccusage parsing** in `src/usage.ts` handles nested `tokenCounts`, `costUSD`/`totalCost` fallbacks, agent subcommand fallback.
