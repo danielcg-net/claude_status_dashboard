@@ -74,6 +74,14 @@ claude plugin details claude-status-dashboard
 Start the dashboard before using Claude Code:
 
 ```bash
+# Recommended: run directly via npx
+npx claude-status-dashboard
+
+# Or install globally:
+npm install -g claude-status-dashboard
+claude-status-dashboard
+
+# Or via Docker:
 docker compose up --build
 ```
 
