@@ -46,6 +46,30 @@ Open [http://localhost:8787](http://localhost:8787). The server starts on port 8
 
 > **Note**: The npm package ships the pre-built server — no `git clone`, Docker, or build step needed. Set `CLAUDE_CONFIG_DIR` to the path of your `~/.claude` directory if it's not in the default location. For hook-based session tracking, you still need the Claude Code plugin or manual hook setup (see [Step 2](#step-2--install-the-claude-code-plugin)).
 
+### Migrating from Docker to npm
+
+If you've been running the dashboard via Docker and want to switch to npm, copy your persisted data out first. **Stop the npm server before copying** — it saves state on shutdown and can overwrite the data you just imported.
+
+**If the container is still running:**
+
+```bash
+docker cp claude-status-dashboard:/data/. data/
+```
+
+**If the container is stopped but the volume still exists:**
+
+```bash
+# sessions
+docker run --rm -v claude_status_dashboard_dashboard-data:/data \
+  alpine cat /data/sessions.json > data/sessions.json
+
+# notify settings (if you use webhook notifications)
+docker run --rm -v claude_status_dashboard_dashboard-data:/data \
+  alpine cat /data/notify-settings.json > data/notify-settings.json
+```
+
+Then start the npm server — your sessions and settings will carry over.
+
 ---
 
 ### Manual setup (Docker)
