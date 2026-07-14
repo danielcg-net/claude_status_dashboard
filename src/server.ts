@@ -13,6 +13,7 @@ import {
   saveBeepSettings,
   type BeepSettings,
 } from './beep-settings.js'
+import { detectDeployment } from './deployment.js'
 import {
   deleteSession,
   registerSession,
@@ -164,6 +165,29 @@ app.get('/api/version', async (context) => {
     version: currentVersion,
     latestVersion,
     updateAvailable,
+  })
+})
+
+app.post('/api/update', async (context) => {
+  const deployment = detectDeployment()
+
+  if (deployment.mode === 'docker') {
+    return context.json({
+      success: false,
+      mode: 'docker' as const,
+      message:
+        'git checkout main && git pull && docker compose build --pull && docker compose up -d',
+      requiresRestart: false,
+    })
+  }
+
+  return context.json({
+    success: false,
+    mode: 'npm' as const,
+    message:
+      'npm install -g claude-status-dashboard@latest\n' +
+      'npx claude-status-dashboard@latest',
+    requiresRestart: false,
   })
 })
 
@@ -357,7 +381,11 @@ export { app }
 // Import for test isolation only.
 import { __resetNotifyConfig } from './notify.js'
 
-export const __resetForTests = (): void => {
+export const __resetForTests = async (): Promise<void> => {
+  // Drain pending saves before resetting to avoid concurrent writes to
+  // the same .tmp file that corrupt settings JSON on disk.
+  await Promise.allSettled([rt.queues.save, rt.queues.notifySave, rt.queues.beepSave])
+
   rt.state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}), beepSettings: beepSettingsSchema.parse({}) }
   rt.cache.usage = null
   rt.cache.version = null

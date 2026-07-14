@@ -6,6 +6,7 @@ import type {
   BeepSettingsUI,
   HooksSettingsUI,
   NotifySettingsUI,
+  UpdateResult,
   UsageSummary,
   VersionInfo,
 } from './ui-types.js'
@@ -58,3 +59,6 @@ export const saveHookSettings = async (settings: Record<string, unknown>): Promi
     method: 'PUT',
     body: JSON.stringify(settings),
   })
+
+export const triggerUpdate = async (): Promise<UpdateResult> =>
+  apiFetch<UpdateResult>('/api/update', { method: 'POST' })

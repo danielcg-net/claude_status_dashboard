@@ -48,6 +48,13 @@ export type VersionInfo = {
   readonly updateAvailable: boolean
 }
 
+export type UpdateResult = {
+  readonly success: boolean
+  readonly mode: 'npm' | 'docker'
+  readonly message: string
+  readonly requiresRestart: boolean
+}
+
 export type NotifySettingsUI = {
   readonly enabled: boolean
   readonly webhookUrl: string
@@ -90,6 +97,8 @@ export type AppState = ApiState & {
   readonly excludedStates: ReadonlySet<SessionStatus>
   readonly updateAvailable: boolean
   readonly latestVersion: string | null
+  readonly updateInProgress: boolean
+  readonly deploymentMessage: string | null
   readonly notifySettings: NotifySettingsUI | null
   readonly notifySettingsOpen: boolean
   readonly beepSettings: BeepSettingsUI | null

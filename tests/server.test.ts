@@ -25,6 +25,21 @@ vi.mock('../src/version.js', async (importOriginal) => {
   }
 })
 
+const mockExecSync = vi.hoisted(() => vi.fn())
+const mockDetectDeployment = vi.hoisted(() => vi.fn(() => ({ mode: 'npm' as const })))
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execSync: mockExecSync,
+  }
+})
+
+vi.mock('../src/deployment.js', () => ({
+  detectDeployment: mockDetectDeployment,
+}))
+
 vi.mocked(mockFetchUsageSummary).mockResolvedValue({
   available: false,
   generatedAt: new Date().toISOString(),
@@ -41,9 +56,12 @@ vi.mocked(mockCheckLatestVersion).mockResolvedValue(null)
 
 import { app, __resetForTests } from '../src/server.js'
 
-beforeEach(() => {
-  __resetForTests()
+beforeEach(async () => {
+  await __resetForTests()
   mockNotify.mockClear()
+  mockExecSync.mockReset()
+  mockDetectDeployment.mockReturnValue({ mode: 'npm' as const })
+  vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
 })
 
 describe('GET /api/health', () => {
@@ -654,5 +672,36 @@ describe('PUT /api/settings/hooks', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(typeof body.installed).toBe('boolean')
+  })
+})
+
+describe('POST /api/update', () => {
+  it('returns install instructions for npm mode', async () => {
+    mockDetectDeployment.mockReturnValue({ mode: 'npm' })
+
+    const res = await app.request('/api/update', { method: 'POST' })
+    expect(res.status).toBe(200)
+
+    const body = await res.json() as { success: boolean; mode: string; message: string; requiresRestart: boolean }
+    expect(body.success).toBe(false)
+    expect(body.mode).toBe('npm')
+    expect(body.requiresRestart).toBe(false)
+    expect(body.message).toContain('npm install -g claude-status-dashboard@latest')
+    expect(body.message).toContain('npx claude-status-dashboard@latest')
+  })
+
+  it('returns instructions for docker mode', async () => {
+    mockDetectDeployment.mockReturnValue({ mode: 'docker' })
+
+    const res = await app.request('/api/update', { method: 'POST' })
+    expect(res.status).toBe(200)
+
+    const body = await res.json() as { success: boolean; mode: string; message: string; requiresRestart: boolean }
+    expect(body.success).toBe(false)
+    expect(body.mode).toBe('docker')
+    expect(body.requiresRestart).toBe(false)
+    expect(body.message).toContain('git checkout main')
+    expect(body.message).toContain('docker compose build')
+    expect(body.message).toContain('&&')
   })
 })

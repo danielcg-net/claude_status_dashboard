@@ -58,6 +58,27 @@ button {
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-link {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-transform: none;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.help-link:hover {
+  border-color: var(--blue);
+  color: var(--text);
 }
 
 h1,
@@ -1265,6 +1286,83 @@ h1 {
   .update-banner__body {
     flex-wrap: wrap;
   }
+}
+
+.update-banner__action {
+  flex: 0 0 auto;
+  padding: 4px 14px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: rgba(125, 183, 255, 0.12);
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  margin-left: 4px;
+}
+
+.update-banner__action:hover {
+  background: rgba(125, 183, 255, 0.22);
+}
+
+.update-banner__action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.update-banner__command-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 10px 0;
+}
+
+.update-banner__command-row:last-child {
+  margin-bottom: 0;
+}
+
+.update-banner__command-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.update-banner__code {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  user-select: all;
+}
+
+.update-banner__command-label {
+  display: block;
+  margin-top: 4px;
+  padding-left: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.update-banner__copy {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-strong);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.update-banner__copy:hover {
+  border-color: var(--blue);
+  color: var(--text);
 }
 
 /* ── Notifications toggle active state ──────────── */
