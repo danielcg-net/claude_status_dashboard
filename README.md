@@ -13,7 +13,9 @@ Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks re
 
 | Active Sessions | Usage & Cost Explorer | Repo Cost Explorer |
 |:---:|:---:|:---:|
-| ![Active sessions dashboard](ClaudeSessionDashboard-01.png) | ![Usage metrics and cost explorer](ClaudeSessionDashboard-02.png) | ![Repo cost explorer detail](ClaudeSessionDashboard-03.png) |
+| ![Active sessions dashboard](images/ClaudeSessionDashboard-01.png) | ![Usage metrics and cost explorer](images/ClaudeSessionDashboard-02.png) | ![Repo cost explorer detail](images/ClaudeSessionDashboard-03.png) |
+
+![Webhook notification example](images/Notification.jpeg)
 
 ---
 
