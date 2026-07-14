@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-danielcg--net/claude__status__dashboard-181717?logo=github)](https://github.com/danielcg-net/claude_status_dashboard)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks register sessions and push status changes to the API exposed by the Docker container. The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
+Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks register sessions and push status changes to the API. The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
 
 ---
 
@@ -19,72 +19,30 @@ Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks re
 
 ## Quick Start
 
-**Prerequisites:** Docker, `git`, Claude Code CLI
+**Prerequisites:** Node.js 18+, Claude Code CLI
 
-### One-liner install
+### npx (recommended)
+
+Run directly without installing anything:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/install.sh | bash
+npx claude-status-dashboard
 ```
 
-This clones the repo to `~/.claude-status-dashboard`, starts the Docker container, and installs the Claude Code plugin globally. Then skip to [Step 3](#step-3--start-a-claude-code-session) below.
+### npm install
 
-> To install to a custom directory: `CLAUDE_DASHBOARD_DIR=/your/path bash <(curl -fsSL ...)`
-
-### npm / npx (no Docker required)
+Or install globally and run:
 
 ```bash
-# Run directly without installing:
-npx claude-status-dashboard
-
-# Or install globally:
 npm install -g claude-status-dashboard
 claude-status-dashboard
 ```
 
 Open [http://localhost:8787](http://localhost:8787). The server starts on port 8787 (configurable via `PORT` env var).
 
-> **Note**: The npm package ships the pre-built server — no `git clone`, Docker, or build step needed. Set `CLAUDE_CONFIG_DIR` to the path of your `~/.claude` directory if it's not in the default location. For hook-based session tracking, you still need the Claude Code plugin or manual hook setup (see [Step 2](#step-2--install-the-claude-code-plugin)).
+> **Note**: The npm package ships the pre-built server — no `git clone`, Docker, or build step needed. Set `CLAUDE_CONFIG_DIR` to the path of your `~/.claude` directory if it's not in the default location. For hook-based session tracking, you still need the Claude Code plugin or manual hook setup (see below).
 
-### Migrating from Docker to npm
-
-If you've been running the dashboard via Docker and want to switch to npm, copy your persisted data out first. **Stop the npm server before copying** — it saves state on shutdown and can overwrite the data you just imported.
-
-**If the container is still running:**
-
-```bash
-docker cp claude-status-dashboard:/data/. data/
-```
-
-**If the container is stopped but the volume still exists:**
-
-```bash
-# sessions
-docker run --rm -v claude_status_dashboard_dashboard-data:/data \
-  alpine cat /data/sessions.json > data/sessions.json
-
-# notify settings (if you use webhook notifications)
-docker run --rm -v claude_status_dashboard_dashboard-data:/data \
-  alpine cat /data/notify-settings.json > data/notify-settings.json
-```
-
-Then start the npm server — your sessions and settings will carry over.
-
----
-
-### Manual setup (Docker)
-
-### Step 1 — Start the dashboard
-
-```bash
-git clone https://github.com/danielcg-net/claude_status_dashboard.git
-cd claude_status_dashboard
-docker compose up --build -d
-```
-
-Open [http://localhost:8787](http://localhost:8787). You'll see an empty dashboard — that's expected until the hook is wired up.
-
-### Step 2 — Install the Claude Code plugin
+### Install the Claude Code plugin
 
 The plugin auto-reports every Claude Code session to the dashboard. Install it globally once and all your repos will show up:
 
@@ -99,7 +57,7 @@ Verify it's installed:
 claude plugin list
 ```
 
-### Step 3 — Start a Claude Code session
+### Start a Claude Code session
 
 Open any project with Claude Code. Within seconds a session card should appear on the dashboard at [http://localhost:8787](http://localhost:8787).
 
@@ -111,14 +69,14 @@ That's it. Every Claude Code session across all your repos will now report in au
 
 ```
 Claude Code  →  hook script  →  POST /api/sessions  →  Dashboard
-                                                          ↕
-                                              ccusage reads ~/.claude logs
-                                              and shows cost & token totals
+                                                         ↕
+                                             ccusage reads ~/.claude logs
+                                             and shows cost & token totals
 ```
 
 - **Hooks** fire on every Claude Code lifecycle event and push status to the dashboard API
 - **ccusage** reads your local `~/.claude/projects/` logs to compute per-session costs
-- **State is in-memory** — restarting the container clears the session cards (costs from ccusage are unaffected)
+- **State is in-memory** — restarting the server clears the session cards (costs from ccusage are unaffected)
 
 ---
 
@@ -157,32 +115,24 @@ For example, if cloned to `/home/user/claude_status_dashboard`:
 
 ## Configuration
 
-### Dashboard container
+### Server configuration
 
-Set these in `compose.yml` under `environment`:
+Set these as environment variables before starting the server:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLAUDE_CONFIG_DIR` | `/claude` | Path to mounted Claude logs inside the container |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Path to your Claude logs directory |
 | `USAGE_CACHE_TTL_MS` | `30000` | How often to refresh ccusage data (ms) |
 | `RED_ALERT_AFTER_MS` | `300000` | How long a red card stays before beeping |
 | `PORT` | `8787` | HTTP port |
 
-By default, Compose mounts `~/.claude` into the container as read-only:
+For example:
 
-```yaml
-volumes:
-  - "${HOME}/.claude:/claude:ro"
-environment:
-  CLAUDE_CONFIG_DIR: "/claude"
+```bash
+PORT=9090 CLAUDE_CONFIG_DIR=/custom/path/.claude npx claude-status-dashboard
 ```
 
-If your Claude logs live elsewhere, update the volume source and `CLAUDE_CONFIG_DIR` accordingly.
-
-> **Linux note:** If you run Docker with `sudo`, `${HOME}` resolves to `/root`
-> instead of your user's home directory, so the volume mount points at the wrong
-> path. Fix: add your user to the `docker` group (`sudo usermod -aG docker $USER`,
-> then log out and back in) so you can run Docker without `sudo`.
+> **Docker users:** set these in `compose.yml` under `environment`. See the [Development](#development) section.
 
 ### Hook environment variables
 
@@ -204,7 +154,7 @@ Instead of editing `settings.json` manually, you can use the **Hooks** button in
 - **Install / Update** — downloads the hook script from the corresponding GitHub release, writes it to `~/.claude-status-dashboard/hooks/`, and adds the hook entries to the chosen `settings.json`.
 - **Delete** — removes the dashboard hook entries from `settings.json` (other hooks and settings are preserved).
 
-> **Docker note:** The hooks panel needs write access to your `~/.claude` and `~/.claude-status-dashboard` directories. The `compose.yml` mounts both as writable volumes. If you're running outside Docker, the server process needs filesystem access to these paths.
+The panel needs write access to your `~/.claude` and `~/.claude-status-dashboard` directories. If running via npm/npx, the server process uses your local filesystem permissions — no extra setup needed. If running via Docker, `compose.yml` mounts both directories as writable volumes.
 
 The panel uses the dashboard's own version tag to fetch the hook script (or set `HOOKS_VERSION` to pin a specific release).
 
@@ -249,9 +199,7 @@ Get pinged on your Apple Watch, phone, Slack, Teams, or anywhere else when Claud
 
 ### Configuration
 
-Copy `.env.example` to `.env`, fill in your values, then add these to
-`compose.yml` under `environment` (or keep the `compose.yml` defaults
-which read from `.env`):
+Set these environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -262,8 +210,11 @@ which read from `.env`):
 | `NOTIFY_PUSHOVER_TOKEN` | _(none)_ | Pushover app token (only needed for `pushover` format) |
 | `NOTIFY_PUSHOVER_USER` | _(none)_ | Pushover user key (only needed for `pushover` format) |
 
-> **Secrets belong in `.env`, not `compose.yml`.** `.env` is gitignored.
+> **Secrets belong in `.env`, not committed anywhere.** `.env` is gitignored.
 > Copy `.env.example` to get started.
+>
+> With npm/npx, the server reads `.env` from the working directory. With Docker,
+> `compose.yml` uses `${VAR}` substitution to read from `.env` at runtime.
 
 ### Event types
 
@@ -279,35 +230,32 @@ If you only want alerts and nothing else, set `NOTIFY_ON=attention`.
 
 ### Example: Pushover → Apple Watch
 
-```yaml
-environment:
-  NOTIFY_WEBHOOK_URL: "https://api.pushover.net/1/messages.json"
-  NOTIFY_FORMAT: "pushover"
-  NOTIFY_ON: "attention"
-  NOTIFY_PUSHOVER_TOKEN: "a1b2c3-your-app-token"
-  NOTIFY_PUSHOVER_USER: "uXyZ99-your-user-key"
+```bash
+export NOTIFY_WEBHOOK_URL="https://api.pushover.net/1/messages.json"
+export NOTIFY_FORMAT="pushover"
+export NOTIFY_ON="attention"
+export NOTIFY_PUSHOVER_TOKEN="a1b2c3-your-app-token"
+export NOTIFY_PUSHOVER_USER="uXyZ99-your-user-key"
 ```
 
 You'll get a tap on your wrist whenever Claude needs attention.
 
 ### Example: Microsoft Teams channel
 
-```yaml
-environment:
-  NOTIFY_WEBHOOK_URL: "https://your-org.webhook.office.com/webhookb2/..."
-  NOTIFY_FORMAT: "teams"
-  NOTIFY_ON: "started,finished,attention"
+```bash
+export NOTIFY_WEBHOOK_URL="https://your-org.webhook.office.com/webhookb2/..."
+export NOTIFY_FORMAT="teams"
+export NOTIFY_ON="started,finished,attention"
 ```
 
 A card posts to the channel each time a session starts, finishes, or needs attention.
 
 ### Example: ntfy.sh (free, self-hostable)
 
-```yaml
-environment:
-  NOTIFY_WEBHOOK_URL: "https://ntfy.sh/my-claude-alerts"
-  NOTIFY_FORMAT: "generic"
-  NOTIFY_ON: "attention"
+```bash
+export NOTIFY_WEBHOOK_URL="https://ntfy.sh/my-claude-alerts"
+export NOTIFY_FORMAT="generic"
+export NOTIFY_ON="attention"
 ```
 
 Then install the [ntfy iOS app](https://ntfy.sh) — notifications arrive on your Apple Watch too.
@@ -325,7 +273,51 @@ claude plugin install claude-status-dashboard@claude-status-dashboard --scope us
 
 ---
 
-## Local Development
+## Development
+
+### Docker
+
+**Prerequisites:** Docker, `git`, Claude Code CLI
+
+#### One-liner install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danielcg-net/claude_status_dashboard/main/install.sh | bash
+```
+
+This clones the repo to `~/.claude-status-dashboard`, starts the Docker container, and installs the Claude Code plugin globally.
+
+> To install to a custom directory: `CLAUDE_DASHBOARD_DIR=/your/path bash <(curl -fsSL ...)`
+
+#### Manual setup
+
+```bash
+git clone https://github.com/danielcg-net/claude_status_dashboard.git
+cd claude_status_dashboard
+docker compose up --build -d
+```
+
+Open [http://localhost:8787](http://localhost:8787). You'll see an empty dashboard — that's expected until the hook is wired up. Then follow the [plugin install](#install-the-claude-code-plugin) instructions above.
+
+#### Docker configuration
+
+By default, Compose mounts `~/.claude` into the container as read-only:
+
+```yaml
+volumes:
+  - "${HOME}/.claude:/claude:ro"
+environment:
+  CLAUDE_CONFIG_DIR: "/claude"
+```
+
+If your Claude logs live elsewhere, update the volume source and `CLAUDE_CONFIG_DIR` accordingly.
+
+> **Linux note:** If you run Docker with `sudo`, `${HOME}` resolves to `/root`
+> instead of your user's home directory, so the volume mount points at the wrong
+> path. Fix: add your user to the `docker` group (`sudo usermod -aG docker $USER`,
+> then log out and back in) so you can run Docker without `sudo`.
+
+### Local Development
 
 ```bash
 npm install
@@ -333,6 +325,30 @@ npm run dev
 ```
 
 Open [http://localhost:8787](http://localhost:8787).
+
+### Migrating from Docker to npm
+
+If you've been running the dashboard via Docker and want to switch to npm, copy your persisted data out first. **Stop the npm server before copying** — it saves state on shutdown and can overwrite the data you just imported.
+
+**If the container is still running:**
+
+```bash
+docker cp claude-status-dashboard:/data/. data/
+```
+
+**If the container is stopped but the volume still exists:**
+
+```bash
+# sessions
+docker run --rm -v claude_status_dashboard_dashboard-data:/data \
+  alpine cat /data/sessions.json > data/sessions.json
+
+# notify settings (if you use webhook notifications)
+docker run --rm -v claude_status_dashboard_dashboard-data:/data \
+  alpine cat /data/notify-settings.json > data/notify-settings.json
+```
+
+Then start the npm server — your sessions and settings will carry over.
 
 ---
 

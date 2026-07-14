@@ -37,6 +37,14 @@ chmod +x /home/user/claude_status_dashboard/hooks/claude-status-dashboard.sh
 Start the dashboard before using Claude Code:
 
 ```bash
+# Recommended: run directly via npx
+npx claude-status-dashboard
+
+# Or install globally:
+npm install -g claude-status-dashboard
+claude-status-dashboard
+
+# Or via Docker:
 docker compose up --build
 ```
 
