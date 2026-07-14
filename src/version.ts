@@ -26,14 +26,13 @@ export const compareVersions = (a: string, b: string): number => {
   const bParts = b.split('.').map(Number)
   const length = Math.max(aParts.length, bParts.length)
 
-  for (const i of Array(length).keys()) {
+  const firstDiff = Array.from({ length }, (_, i) => {
     const aNum = aParts[i] ?? 0
     const bNum = bParts[i] ?? 0
     if (isNaN(aNum) || isNaN(bNum)) return 0
-    if (aNum !== bNum) return aNum - bNum
-  }
-
-  return 0
+    return aNum - bNum
+  }).find((d) => d !== 0)
+  return firstDiff ?? 0
 }
 
 /** Fetches a package.json URL and extracts the version field. Returns null on any error. */
