@@ -59,15 +59,16 @@ const makeDismissButton = (onDismiss: () => void): HTMLButtonElement => {
 
 // ── Banner builders ─────────────────────────────────────────────
 
-const makeUpdateButton = (): HTMLButtonElement => {
+const makeUpdateButton = (sync: () => void): HTMLButtonElement => {
   const btn = document.createElement('button')
   btn.className = 'update-banner__action'
   btn.type = 'button'
-  btn.textContent = 'Update now'
+  btn.textContent = 'Update'
   btn.addEventListener('click', async () => {
     try {
       const result = await triggerUpdate()
       ui.state = { ...ui.state, deploymentMessage: result.message }
+      sync()
     } catch {
       showToast('Update request failed. Check server logs.', 'error')
     }
@@ -75,11 +76,11 @@ const makeUpdateButton = (): HTMLButtonElement => {
   return btn
 }
 
-const buildBanner = (onDismiss: () => void): HTMLElement => {
+const buildBanner = (sync: () => void, onDismiss: () => void): HTMLElement => {
   const latest = ui.state.latestVersion ?? 'unknown'
   const current = __VERSION__
 
-  const actionBtn = makeUpdateButton()
+  const actionBtn = makeUpdateButton(sync)
   const dismissBtn = makeDismissButton(onDismiss)
 
   return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
@@ -145,6 +146,8 @@ const buildInstructionsBanner = (command: string, onDismiss: () => void): HTMLEl
 export const renderUpdateBanner = (): HTMLElement | null => null
 
 export const syncBanner = (bannerWrapper: HTMLElement, onDismiss: () => void): void => {
+  const sync = (): void => syncBanner(bannerWrapper, onDismiss)
+
   const dismissed =
     !ui.state.deploymentMessage &&
     sessionStorage.getItem(versionBannerDismissedKey) === ui.state.latestVersion
@@ -172,5 +175,5 @@ export const syncBanner = (bannerWrapper: HTMLElement, onDismiss: () => void): v
   const existingStrong = existing?.querySelector('strong')?.textContent
   if (existingStrong === `v${latest}`) return
 
-  bannerWrapper.replaceChildren(buildBanner(onDismiss))
+  bannerWrapper.replaceChildren(buildBanner(sync, onDismiss))
 }
