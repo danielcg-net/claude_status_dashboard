@@ -1,6 +1,6 @@
 {
   "name": "claude-status-dashboard",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Real-time web dashboard for monitoring Claude Code sessions — costs, statuses, and history at a glance.",
   "keywords": [
     "claude-code",
