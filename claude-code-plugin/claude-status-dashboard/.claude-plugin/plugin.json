@@ -1,13 +1,13 @@
 {
   "name": "claude-status-dashboard",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Reports Claude Code session status to a local Claude Status Dashboard.",
   "author": {
     "name": "danielcg-net"
   },
   "homepage": "https://github.com/danielcg-net/claude_status_dashboard",
   "repository": "https://github.com/danielcg-net/claude_status_dashboard.git",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "claude-code",
     "hooks",

@@ -3,7 +3,7 @@
 > **Real-time visibility into your Claude Code sessions — costs, statuses, and history at a glance.**
 
 [![GitHub](https://img.shields.io/badge/GitHub-danielcg--net/claude__status__dashboard-181717?logo=github)](https://github.com/danielcg-net/claude_status_dashboard)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 Local-only web dashboard for tracking Claude Code sessions. Claude Code hooks register sessions and push status changes to the API exposed by the Docker container. The dashboard also reads Claude Code usage through [`ccusage`](https://www.npmjs.com/package/ccusage) and displays cost/token totals when Claude logs are available.
 
@@ -31,9 +31,24 @@ This clones the repo to `~/.claude-status-dashboard`, starts the Docker containe
 
 > To install to a custom directory: `CLAUDE_DASHBOARD_DIR=/your/path bash <(curl -fsSL ...)`
 
+### npm / npx (no Docker required)
+
+```bash
+# Run directly without installing:
+npx claude-status-dashboard
+
+# Or install globally:
+npm install -g claude-status-dashboard
+claude-status-dashboard
+```
+
+Open [http://localhost:8787](http://localhost:8787). The server starts on port 8787 (configurable via `PORT` env var).
+
+> **Note**: The npm package ships the pre-built server — no `git clone`, Docker, or build step needed. Set `CLAUDE_CONFIG_DIR` to the path of your `~/.claude` directory if it's not in the default location. For hook-based session tracking, you still need the Claude Code plugin or manual hook setup (see [Step 2](#step-2--install-the-claude-code-plugin)).
+
 ---
 
-### Manual setup
+### Manual setup (Docker)
 
 ### Step 1 — Start the dashboard
 
