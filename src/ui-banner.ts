@@ -1,4 +1,6 @@
-// Update-available banner — renders, syncs, and dismisses version notifications.
+// Update-available banner — renders and syncs version notifications.
+// Event attachment (including dismiss) is handled by ui-render.ts to avoid
+// circular imports — ui-render.ts has access to the render() function.
 
 import { createElement } from './ui-dom.js'
 import { ui } from './ui-state.js'
@@ -41,24 +43,19 @@ export const renderUpdateBanner = (): HTMLElement | null => {
   ])
 }
 
-export const dismissBanner = (): void => {
-  if (ui.state.latestVersion) {
-    sessionStorage.setItem(versionBannerDismissedKey, ui.state.latestVersion)
-  }
-  ui.state = { ...ui.state, updateAvailable: false }
-}
-
-export const attachBannerDismiss = (container: HTMLElement): void => {
+/** Attach a dismiss handler to any .update-banner__dismiss buttons in the container.
+ *  `onDismiss` is called after updating state — the caller should trigger a re-render. */
+const attachDismissHandler = (container: HTMLElement, onDismiss: () => void): void => {
   container.querySelector('.update-banner__dismiss')?.addEventListener('click', () => {
     if (ui.state.latestVersion) {
       sessionStorage.setItem(versionBannerDismissedKey, ui.state.latestVersion)
     }
     ui.state = { ...ui.state, updateAvailable: false }
-    // render() will be called by the caller
+    onDismiss()
   })
 }
 
-export const syncBanner = (bannerWrapper: HTMLElement): void => {
+export const syncBanner = (bannerWrapper: HTMLElement, onDismiss: () => void): void => {
   const newBanner = renderUpdateBanner()
   const existingBanner = bannerWrapper.querySelector('.update-banner')
 
@@ -66,13 +63,13 @@ export const syncBanner = (bannerWrapper: HTMLElement): void => {
     existingBanner.remove()
   } else if (newBanner && !existingBanner) {
     bannerWrapper.replaceChildren(newBanner)
-    attachBannerDismiss(bannerWrapper)
+    attachDismissHandler(bannerWrapper, onDismiss)
   } else if (newBanner && existingBanner) {
     const newStrong = newBanner.querySelector('strong')?.textContent
     const oldStrong = existingBanner.querySelector('strong')?.textContent
     if (newStrong && newStrong !== oldStrong) {
       bannerWrapper.replaceChildren(newBanner)
-      attachBannerDismiss(bannerWrapper)
+      attachDismissHandler(bannerWrapper, onDismiss)
     }
   }
 }

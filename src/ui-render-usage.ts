@@ -4,7 +4,7 @@ import { costWindowLabels, daysForWindow, recentUsageDays, sumUsageDays } from '
 import { createElement } from './ui-dom.js'
 import { formatDayLabel, formatMoney, formatNumber, formatRelative, formatDateLabel, formatLocalTime } from './ui-format.js'
 import { ui } from './ui-state.js'
-import type { CostWindow, UsageDay, UsageProject, UsageTotals } from './ui-types.js'
+import type { CostWindow, UsageDay, UsageProject, UsageSummary, UsageTotals } from './ui-types.js'
 import { costWindowOrder } from './ui-types.js'
 import { renderExcludedReposSection } from './ui-render-excluded.js'
 
@@ -37,13 +37,7 @@ export const renderCostWindowControls = (): HTMLElement =>
     ),
   ])
 
-export const renderUsage = (usage: {
-  readonly available: boolean
-  readonly generatedAt: string
-  readonly projects: Readonly<Record<string, UsageProject>>
-  readonly activeBlock: { readonly startTime: string; readonly endTime: string; readonly totalCost: number; readonly totalTokens: number; readonly modelsUsed: readonly string[] } | null
-  readonly error: string | null
-} | null): HTMLElement => {
+export const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   if (!usage) {
     return createElement('section', { class: 'usage usage--loading', 'aria-label': 'Claude usage' }, [
       createElement('h2', {}, ['Claude usage']),

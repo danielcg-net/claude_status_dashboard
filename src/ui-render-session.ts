@@ -16,7 +16,7 @@ import { createElement } from './ui-dom.js'
 import { formatDayLabel, formatLocalTime, formatMoney, formatNumber, formatRelative, millisecondsSince } from './ui-format.js'
 import { ui } from './ui-state.js'
 import type { AppState, Session, SortMode, UsageProject, UsageSummary } from './ui-types.js'
-import { MODEL_COLORS, statusDetails, statusLabels, statusSortOrder, statusToColor } from './ui-types.js'
+import { statusDetails, statusLabels, statusSortOrder, statusToColor } from './ui-types.js'
 
 // ── Project lookup cache ───────────────────────────────────────────────────────
 

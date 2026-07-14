@@ -6,7 +6,7 @@ import { createElement } from './ui-dom.js'
 import { ui } from './ui-state.js'
 import type { AppState, CostWindow, SessionStatus, SortMode } from './ui-types.js'
 import { statusLabels, statusToColor } from './ui-types.js'
-import { renderUpdateBanner, attachBannerDismiss, syncBanner } from './ui-banner.js'
+import { renderUpdateBanner, syncBanner } from './ui-banner.js'
 import { renderUsage } from './ui-render-usage.js'
 import {
   findUsageProject,
@@ -414,7 +414,13 @@ export const render = (): void => {
     const banner = renderUpdateBanner()
     if (banner) {
       shell.bannerWrapper.append(banner)
-      attachBannerDismiss(shell.bannerWrapper)
+      shell.bannerWrapper.querySelector('.update-banner__dismiss')?.addEventListener('click', () => {
+        if (ui.state.latestVersion) {
+          sessionStorage.setItem('version-banner-dismissed', ui.state.latestVersion)
+        }
+        ui.state = { ...ui.state, updateAvailable: false }
+        render()
+      })
     }
 
     panels.alertControlsRoot = buildAlertControls()
@@ -464,7 +470,7 @@ export const render = (): void => {
   }
 
   // ── Subsequent renders: sync persistent sections, rebuild body ──
-  syncBanner(shell.bannerWrapper!)
+  syncBanner(shell.bannerWrapper!, render)
   syncAlertControlsInPlace()
 
   // Capture open state of <details> elements before rebuild
