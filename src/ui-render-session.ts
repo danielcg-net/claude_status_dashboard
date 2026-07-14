@@ -284,6 +284,17 @@ export const renderSessionToolbar = (sessionCount: number): HTMLElement | null =
         }, [String(size)]),
       ),
     ]),
+    // ── Cards per line group ──
+    createElement('div', { class: 'session-toolbar__group', role: 'group', 'aria-label': 'Cards per line' }, [
+      createElement('span', { class: 'session-toolbar__label' }, ['Cards/line']),
+      ...([0, 1, 2, 3, 4] as const).map((cols) =>
+        createElement('button', {
+          class: `session-toolbar__btn${ui.state.cardsPerLine === cols ? ' session-toolbar__btn--active' : ''}`,
+          type: 'button',
+          'data-cards-per-line': String(cols),
+        }, [cols === 0 ? 'Auto' : String(cols)]),
+      ),
+    ]),
     // ── Page navigation (only when multi-page) ──
     ...(totalPages > 1
       ? [createElement('div', { class: 'session-toolbar__nav' }, [

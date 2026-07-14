@@ -19,7 +19,7 @@ import {
 } from './ui-render-session.js'
 import { renderRepoExplorer } from './ui-render-repo.js'
 import { renderExcludedStatesSection } from './ui-render-excluded.js'
-import { saveExcludedRepos, saveExcludedStates } from './ui-storage.js'
+import { saveExcludedRepos, saveExcludedStates, saveToolbarPrefs } from './ui-storage.js'
 import {
   buildNotifyPanel,
   syncNotifyPanelFields,
@@ -275,7 +275,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
         })())]
       : [
           renderSessionToolbar(gridEligible.length) as HTMLElement,
-          createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
+          createElement('section', { class: `grid${ui.state.cardsPerLine > 0 ? ` grid--cols-${ui.state.cardsPerLine}` : ''}`, 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
         ].filter((el): el is HTMLElement => el !== null)
     ),
   ]
@@ -369,6 +369,7 @@ const attachBodyEvents = (): void => {
     button.addEventListener('click', () => {
       const sortMode = button.dataset.sort as SortMode
       ui.state = { ...ui.state, sortMode, pageIndex: 0 }
+      saveToolbarPrefs({ sortMode, pageSize: ui.state.pageSize, cardsPerLine: ui.state.cardsPerLine })
       render()
     })
   })
@@ -379,6 +380,18 @@ const attachBodyEvents = (): void => {
       const pageSize = Number(button.dataset.pageSize)
       if (Number.isNaN(pageSize) || pageSize <= 0) return
       ui.state = { ...ui.state, pageSize, pageIndex: 0 }
+      saveToolbarPrefs({ sortMode: ui.state.sortMode, pageSize, cardsPerLine: ui.state.cardsPerLine })
+      render()
+    })
+  })
+
+  // ── Cards per line ──
+  document.querySelectorAll<HTMLButtonElement>('[data-cards-per-line]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const cardsPerLine = Number(button.dataset.cardsPerLine)
+      if (Number.isNaN(cardsPerLine) || cardsPerLine < 0) return
+      ui.state = { ...ui.state, cardsPerLine }
+      saveToolbarPrefs({ sortMode: ui.state.sortMode, pageSize: ui.state.pageSize, cardsPerLine })
       render()
     })
   })

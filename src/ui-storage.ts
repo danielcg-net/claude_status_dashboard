@@ -61,3 +61,50 @@ export const saveExcludedStates = (excluded: ReadonlySet<SessionStatus>): void =
     console.warn('Could not save excluded states to localStorage:', error)
   }
 }
+
+// ── Toolbar preferences ─────────────────────────────────────────────────────
+
+export type ToolbarPrefs = {
+  readonly sortMode: string
+  readonly pageSize: number
+  readonly cardsPerLine: number
+}
+
+const DEFAULT_TOOLBAR_PREFS: ToolbarPrefs = {
+  sortMode: 'updatedAt-desc',
+  pageSize: 10,
+  cardsPerLine: 0,
+}
+
+const VALID_SORT_MODES = new Set(['status', 'updatedAt-desc', 'updatedAt-asc'])
+
+export const loadToolbarPrefs = (): ToolbarPrefs => {
+  try {
+    const raw = localStorage.getItem('toolbarPrefs')
+    if (raw === null) return DEFAULT_TOOLBAR_PREFS
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_TOOLBAR_PREFS
+    return {
+      sortMode: typeof parsed.sortMode === 'string' && VALID_SORT_MODES.has(parsed.sortMode)
+        ? parsed.sortMode
+        : DEFAULT_TOOLBAR_PREFS.sortMode,
+      pageSize: typeof parsed.pageSize === 'number' && Number.isFinite(parsed.pageSize) && parsed.pageSize > 0
+        ? parsed.pageSize
+        : DEFAULT_TOOLBAR_PREFS.pageSize,
+      cardsPerLine: typeof parsed.cardsPerLine === 'number' && Number.isFinite(parsed.cardsPerLine) && parsed.cardsPerLine >= 0
+        ? parsed.cardsPerLine
+        : DEFAULT_TOOLBAR_PREFS.cardsPerLine,
+    }
+  } catch (error) {
+    console.warn('Could not load toolbar prefs from localStorage:', error)
+    return DEFAULT_TOOLBAR_PREFS
+  }
+}
+
+export const saveToolbarPrefs = (prefs: ToolbarPrefs): void => {
+  try {
+    localStorage.setItem('toolbarPrefs', JSON.stringify(prefs))
+  } catch (error) {
+    console.warn('Could not save toolbar prefs to localStorage:', error)
+  }
+}

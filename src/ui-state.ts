@@ -3,7 +3,9 @@
 // render cycle — never mutated in place.
 
 import type { AppState } from './ui-types.js'
-import { loadExcludedRepos, loadExcludedStates } from './ui-storage.js'
+import { loadExcludedRepos, loadExcludedStates, loadToolbarPrefs } from './ui-storage.js'
+
+const toolbarPrefs = loadToolbarPrefs()
 
 export const initialState: AppState = {
   sessions: [],
@@ -29,9 +31,10 @@ export const initialState: AppState = {
   seenSessionIds: new Set<string>(),
   updateInProgress: false,
   deploymentMessage: null,
-  sortMode: 'updatedAt-desc',
-  pageSize: 10,
+  sortMode: toolbarPrefs.sortMode as AppState['sortMode'],
+  pageSize: toolbarPrefs.pageSize,
   pageIndex: 0,
+  cardsPerLine: toolbarPrefs.cardsPerLine,
 }
 
 export const ui = { state: initialState }
