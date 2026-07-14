@@ -1,8 +1,6 @@
 // Date, number, and currency formatting utilities for the browser UI.
 // Pure functions — no DOM access, safe to test in Node with jsdom.
 
-import { parseUtcDateString } from './client-utils.js'
-
 // Parse a UTC ISO string and return the epoch ms, or null if invalid.
 export const parseIso = (isoDate: string): number | null => {
   const utcMs = Date.parse(isoDate)

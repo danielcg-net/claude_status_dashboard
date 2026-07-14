@@ -14,6 +14,7 @@ import {
 import type { SessionStatus } from './domain.js'
 import { createElement } from './ui-dom.js'
 import { formatDayLabel, formatLocalTime, formatMoney, formatNumber, formatRelative, millisecondsSince } from './ui-format.js'
+import { redAlertAfterMs } from './ui-alerts.js'
 import { ui } from './ui-state.js'
 import type { AppState, Session, SortMode, UsageProject, UsageSummary } from './ui-types.js'
 import { statusDetails, statusLabels, statusSortOrder, statusToColor } from './ui-types.js'
@@ -206,7 +207,7 @@ const renderSessionUsage = (session: Session, usageProject: UsageProject | null)
 
 export const renderSession = (session: Session): HTMLElement => {
   const ageMs = millisecondsSince(session.statusSince)
-  const overdue = session.status === 'attention' && ageMs !== null && ageMs >= ui.state.redAlertAfterMs
+  const overdue = session.status === 'attention' && ageMs !== null && ageMs >= redAlertAfterMs(ui.state)
   const usageProject = findUsageProject(session, ui.state.usage)
   const card = createElement('article', {
     class: `session-card session-card--${statusToColor[session.status]}${overdue ? ' session-card--overdue' : ''}`,

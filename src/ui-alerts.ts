@@ -2,7 +2,6 @@
 // Manages the beep count, seen-session tracking, and alert threshold logic.
 
 import type { AppState } from './ui-types.js'
-import { ui } from './ui-state.js'
 
 const originalTitle = document.title
 
