@@ -18,7 +18,7 @@ ENV NODE_ENV=production
 ENV PORT=8787
 COPY package*.json ./
 RUN npm install --omit=dev && \
-    chmod +x /app/node_modules/@ccusage/ccusage-linux-x64/bin/ccusage 2>/dev/null || true
+    find /app/node_modules/@ccusage -name ccusage -type f -exec chmod +x {} \; 2>/dev/null || true
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 EXPOSE 8787
