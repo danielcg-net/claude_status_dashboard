@@ -32,6 +32,7 @@ export const initialState: AppState = {
   sortMode: 'updatedAt-desc',
   pageSize: 10,
   pageIndex: 0,
+  cardsPerLine: 0,  // 0 = auto, 2/3/4 = fixed columns
 }
 
 export const ui = { state: initialState }

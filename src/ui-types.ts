@@ -109,6 +109,7 @@ export type AppState = ApiState & {
   readonly sortMode: SortMode
   readonly pageSize: number
   readonly pageIndex: number
+  readonly cardsPerLine: number  // 0 = auto, 2/3/4 = fixed columns
 }
 
 export const statusLabels: Record<SessionStatus, string> = {

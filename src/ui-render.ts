@@ -275,7 +275,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
         })())]
       : [
           renderSessionToolbar(gridEligible.length) as HTMLElement,
-          createElement('section', { class: 'grid', 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
+          createElement('section', { class: `grid${ui.state.cardsPerLine > 0 ? ` grid--cols-${ui.state.cardsPerLine}` : ''}`, 'aria-label': 'Claude Code sessions' }, pagedSessions.map(renderSession)),
         ].filter((el): el is HTMLElement => el !== null)
     ),
   ]
@@ -379,6 +379,16 @@ const attachBodyEvents = (): void => {
       const pageSize = Number(button.dataset.pageSize)
       if (Number.isNaN(pageSize) || pageSize <= 0) return
       ui.state = { ...ui.state, pageSize, pageIndex: 0 }
+      render()
+    })
+  })
+
+  // ── Cards per line ──
+  document.querySelectorAll<HTMLButtonElement>('[data-cards-per-line]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const cardsPerLine = Number(button.dataset.cardsPerLine)
+      if (Number.isNaN(cardsPerLine) || cardsPerLine < 0) return
+      ui.state = { ...ui.state, cardsPerLine }
       render()
     })
   })
