@@ -1,6 +1,6 @@
 {
   "name": "claude-status-dashboard",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Real-time web dashboard for monitoring Claude Code sessions — costs, statuses, and history at a glance.",
   "keywords": [
     "claude-code",
@@ -32,7 +32,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "claude-status-dashboard": "./bin/cli.js"
+    "claude-status-dashboard": "bin/cli.js"
   },
   "files": [
     "bin/",
