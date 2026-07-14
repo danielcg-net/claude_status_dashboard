@@ -169,26 +169,36 @@ app.get('/api/version', async (context) => {
 })
 
 app.post('/api/update', async (context) => {
-  const deployment = detectDeployment()
+  try {
+    const deployment = detectDeployment()
 
-  if (deployment.mode === 'docker') {
+    if (deployment.mode === 'docker') {
+      return context.json({
+        success: false,
+        mode: 'docker' as const,
+        message:
+          'git checkout main && git pull && docker compose build --pull && docker compose up -d',
+        requiresRestart: false,
+      })
+    }
+
     return context.json({
       success: false,
-      mode: 'docker' as const,
+      mode: 'npm' as const,
       message:
-        'git checkout main && git pull && docker compose build --pull && docker compose up -d',
+        'npm install -g claude-status-dashboard@latest\n' +
+        'npx claude-status-dashboard@latest',
+      requiresRestart: false,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return context.json({
+      success: false,
+      mode: 'npm' as const,
+      message: `Update check failed: ${message}`,
       requiresRestart: false,
     })
   }
-
-  return context.json({
-    success: false,
-    mode: 'npm' as const,
-    message:
-      'npm install -g claude-status-dashboard@latest\n' +
-      'npx claude-status-dashboard@latest',
-    requiresRestart: false,
-  })
 })
 
 app.get('/api/sessions', (context) =>
