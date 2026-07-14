@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
@@ -195,11 +197,17 @@ const allSessionsFrom = (json: unknown): readonly UsageSession[] => {
 
 const parseJson = (stdout: string): unknown => JSON.parse(stdout) as unknown
 
+/** Resolves the Claude config directory, same logic as the ccusage native binary:
+ *  CLAUDE_CONFIG_DIR → CLAUDE_HOME → $HOME/.claude */
+const claudeConfigDir = (): string =>
+  process.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_HOME ?? join(homedir(), '.claude')
+
 const runCcusage = async (args: readonly string[]): Promise<unknown> => {
   const { stdout } = await execFileAsync(ccusageBin, [...args], {
     timeout: 15_000,
     env: {
       ...process.env,
+      CLAUDE_CONFIG_DIR: claudeConfigDir(),
       LOG_LEVEL: process.env.LOG_LEVEL ?? '1',
     },
   })
