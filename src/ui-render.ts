@@ -80,7 +80,7 @@ const syncAlertControlsInPlace = (): void => {
   const hooksToggle = panels.alertControlsRoot.querySelector<HTMLButtonElement>('#hooks-toggle')
   if (hooksToggle) {
     hooksToggle.classList.toggle('audio-toggle--active', ui.state.hooksSettingsOpen)
-    const hooksNotInstalled = ui.state.hooksSettings !== null && !ui.state.hooksSettings.installed
+    const hooksNotInstalled = ui.state.hooksSettings?.installed === false
     hooksToggle.classList.toggle('audio-toggle--warn', hooksNotInstalled)
     hooksToggle.textContent = hooksNotInstalled ? '⚠️ Hooks' : 'Hooks'
   }
