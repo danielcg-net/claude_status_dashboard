@@ -48,4 +48,32 @@ test.describe('Claude Status Dashboard', () => {
       expect(await windows.count()).toBeGreaterThan(0)
     }
   })
+
+  test('dismissing update instructions does not temporarily suppress the update banner', async ({ page }) => {
+    await page.route('/api/version', (route) => route.fulfill({
+      json: { version: '0.9.3', latestVersion: '99.99.99', updateAvailable: true },
+    }))
+    await page.route('/api/update', (route) => route.fulfill({
+      json: {
+        success: false,
+        mode: 'npm',
+        message: 'npm install -g claude-status-dashboard@latest',
+        requiresRestart: true,
+      },
+    }))
+
+    await page.goto('/')
+    await expect(page.getByRole('status', { name: 'Update available' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'How to update' }).click()
+    await expect(page.getByRole('status', { name: 'Update instructions' })).toBeVisible()
+    await page.getByRole('button', { name: 'Dismiss' }).click()
+
+    await expect.poll(() => page.evaluate(
+      () => localStorage.getItem('version-banner-dismissed-until'),
+    )).toBeNull()
+
+    await page.reload()
+    await expect(page.getByRole('status', { name: 'Update available' })).toBeVisible()
+  })
 })

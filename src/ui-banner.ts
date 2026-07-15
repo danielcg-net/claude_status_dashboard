@@ -44,18 +44,23 @@ const makeCopyButton = (text: string): HTMLButtonElement => {
   return btn
 }
 
-const makeDismissButton = (onDismiss: () => void): HTMLButtonElement => {
+const makeDismissButton = (
+  onDismiss: () => void,
+  temporarilyDismissUpdate = false,
+): HTMLButtonElement => {
   const btn = document.createElement('button')
   btn.className = 'update-banner__dismiss'
   btn.type = 'button'
-  btn.setAttribute('aria-label', 'Dismiss temporarily (banner will reappear later)')
-  btn.title = 'Dismiss temporarily'
+  btn.setAttribute('aria-label', temporarilyDismissUpdate ? 'Dismiss temporarily (banner will reappear later)' : 'Dismiss')
+  btn.title = temporarilyDismissUpdate ? 'Dismiss temporarily' : 'Dismiss'
   btn.textContent = '✕'
   btn.addEventListener('click', () => {
-    localStorage.setItem(
-      versionBannerDismissedUntilKey,
-      String(Date.now() + TEMPORARY_DISMISS_MS),
-    )
+    if (temporarilyDismissUpdate) {
+      localStorage.setItem(
+        versionBannerDismissedUntilKey,
+        String(Date.now() + TEMPORARY_DISMISS_MS),
+      )
+    }
     ui.state = { ...ui.state, updateAvailable: false, deploymentMessage: null }
     onDismiss()
   })
@@ -104,7 +109,7 @@ const buildBanner = (sync: () => void, onDismiss: () => void): HTMLElement => {
 
   const actionBtn = makeUpdateButton(sync)
   const skipBtn = makeSkipButton(onDismiss)
-  const dismissBtn = makeDismissButton(onDismiss)
+  const dismissBtn = makeDismissButton(onDismiss, true)
 
   return createElement('aside', { class: 'update-banner', role: 'status', 'aria-label': 'Update available' }, [
     createElement('div', { class: 'update-banner__body' }, [
