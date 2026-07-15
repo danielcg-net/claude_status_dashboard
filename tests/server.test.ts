@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { getVersion } from '../src/version.js'
 
@@ -651,14 +654,28 @@ describe('PUT /api/settings/hooks', () => {
   })
 
   it('accepts valid install request (schema passes)', async () => {
-    const res = await app.request('/api/settings/hooks', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'install', scope: 'global' }),
-    })
-    // Schema validation should pass (not 400). The install may fail at runtime
-    // (no GitHub access in test), but that's an operational error, not validation.
-    expect(res.status).not.toBe(400)
+    const tempDir = await mkdtemp(join(tmpdir(), 'server-hooks-test-'))
+    const originalClaudeHome = process.env.CLAUDE_HOME
+    const originalDashboardDir = process.env.CLAUDE_DASHBOARD_DIR
+    process.env.CLAUDE_HOME = join(tempDir, 'claude')
+    process.env.CLAUDE_DASHBOARD_DIR = join(tempDir, 'dashboard')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('#!/bin/sh\necho hook')))
+
+    try {
+      const res = await app.request('/api/settings/hooks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'install', scope: 'global' }),
+      })
+      expect(res.status).toBe(200)
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalClaudeHome === undefined) delete process.env.CLAUDE_HOME
+      else process.env.CLAUDE_HOME = originalClaudeHome
+      if (originalDashboardDir === undefined) delete process.env.CLAUDE_DASHBOARD_DIR
+      else process.env.CLAUDE_DASHBOARD_DIR = originalDashboardDir
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 
   it('accepts valid delete request without scope (defaults to global)', async () => {

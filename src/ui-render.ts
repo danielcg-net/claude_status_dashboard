@@ -76,10 +76,13 @@ const syncAlertControlsInPlace = (): void => {
     notifyToggle.classList.toggle('audio-toggle--active', ui.state.notifySettingsOpen)
   }
 
-  // Hooks toggle active class
+  // Hooks toggle active class + warning state
   const hooksToggle = panels.alertControlsRoot.querySelector<HTMLButtonElement>('#hooks-toggle')
   if (hooksToggle) {
     hooksToggle.classList.toggle('audio-toggle--active', ui.state.hooksSettingsOpen)
+    const hooksNotInstalled = ui.state.hooksSettings?.installed === false
+    hooksToggle.classList.toggle('audio-toggle--warn', hooksNotInstalled)
+    hooksToggle.textContent = hooksNotInstalled ? '⚠️ Hooks' : 'Hooks'
   }
 
   // ── Beep panel visibility transitions ──

@@ -42,7 +42,7 @@ test.describe('Hooks settings panel', () => {
 
     await expect(beepBtn).toHaveText('Beeps')
     await expect(notifyBtn).toHaveText('Notifications')
-    await expect(hooksBtn).toHaveText('Hooks')
+    await expect(hooksBtn).toContainText('Hooks')
   })
 
   test('opens on click and shows all expected elements', async ({ page }) => {
