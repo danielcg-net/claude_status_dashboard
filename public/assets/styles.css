@@ -81,6 +81,38 @@ button {
   color: var(--text);
 }
 
+.support-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-transform: none;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px 2px 3px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.support-link:hover {
+  border-color: var(--green);
+  color: var(--text);
+}
+
+.support-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.support-link__avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 h1,
 h2,
 p {
