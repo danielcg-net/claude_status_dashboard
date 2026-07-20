@@ -444,6 +444,21 @@ export const render = (): void => {
             rel: 'noopener',
             title: 'Help & documentation',
           }, ['Help']),
+          createElement('a', {
+            class: 'support-link',
+            href: 'https://ko-fi.com/danielcgnet',
+            target: '_blank',
+            rel: 'noopener',
+            title: 'Buy Bela a treat on Ko-fi',
+            'aria-label': 'Buy Bela a treat on Ko-fi',
+          }, [
+            createElement('img', {
+              class: 'support-link__avatar',
+              src: '/assets/bela-avatar.png',
+              alt: '',
+            }),
+            'Buy Bela a treat',
+          ]),
         ]),
         createElement('h1', {}, ['Claude Session Dashboard', createElement('span', { class: 'version-badge' }, [`v${__VERSION__}`])]),
       ]),

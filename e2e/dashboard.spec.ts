@@ -6,6 +6,14 @@ test.describe('Claude Status Dashboard', () => {
     await expect(page.locator('h1')).toContainText('Claude Session Dashboard')
   })
 
+  test('links to Bela\'s Ko-fi page', async ({ page }) => {
+    await page.goto('/')
+    const supportLink = page.getByRole('link', { name: 'Buy Bela a treat on Ko-fi' })
+    await expect(supportLink).toBeVisible()
+    await expect(supportLink).toHaveAttribute('href', 'https://ko-fi.com/danielcgnet')
+    await expect(supportLink.locator('img')).toHaveAttribute('src', '/assets/bela-avatar.png')
+  })
+
   test('health endpoint responds', async ({ request }) => {
     const res = await request.get('/api/health')
     expect(res.ok()).toBe(true)
