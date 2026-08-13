@@ -285,7 +285,7 @@ const spawnFailurePattern = /spawn\b[^\n]*\b(enoent|eacces|eperm|enotdir|enoexec
  *  cause. A missing/unspawnable CLI has nothing to do with log mounts or
  *  CLAUDE_CONFIG_DIR, so showing the config hint for it sends users down the
  *  wrong path (see issue #65). */
-export const usageUnavailableMessage = (error: string | null): string => {
+export const usageUnavailableMessage = (error: string | null | undefined): string => {
   const detail = (error ?? '').toLowerCase()
 
   if (detail.length === 0) {
