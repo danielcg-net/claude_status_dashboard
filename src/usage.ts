@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -83,8 +83,11 @@ const emptyTotals: UsageTotals = {
 
 /** Maximum stdout we accept from a single ccusage invocation. The Node default
  *  (1 MB) is easily exceeded by `daily --instances` on machines with a large
- *  `~/.claude/projects` history, which used to surface as "not available". */
-const ccusageMaxBuffer = 64 * 1024 * 1024
+ *  `~/.claude/projects` history, which used to surface as "not available".
+ *  Node grows this buffer as output arrives rather than preallocating it, but
+ *  four concurrent invocations still bound worst-case memory — hence 32 MB
+ *  rather than something arbitrarily large. */
+const ccusageMaxBuffer = 32 * 1024 * 1024
 
 /** Wall-clock budget for a single ccusage invocation. */
 const ccusageTimeoutMs = 15_000
@@ -124,9 +127,15 @@ const resolveCcusageScript = (): CcusageScript => {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { readonly bin?: unknown }
     const scriptPath = ccusageScriptPathFrom(packageJsonPath, packageJson.bin)
 
-    return scriptPath === null
-      ? { ok: false, error: `ccusage package at ${packageJsonPath} declares no "bin.ccusage" entry.` }
-      : { ok: true, scriptPath }
+    if (scriptPath === null) {
+      return { ok: false, error: `ccusage package at ${packageJsonPath} declares no "bin.ccusage" entry.` }
+    }
+
+    // Report a bin entry that points nowhere directly, rather than spawning a
+    // child just to read MODULE_NOT_FOUND back out of its stderr.
+    return existsSync(scriptPath)
+      ? { ok: true, scriptPath }
+      : { ok: false, error: `ccusage CLI is missing: ${scriptPath} does not exist.` }
   } catch (error) {
     return { ok: false, error: `Unable to resolve the ccusage package: ${errorMessage(error)}` }
   }

@@ -450,6 +450,18 @@ describe('usageUnavailableMessage', () => {
     expect(message).toContain('ccusage CLI could not be started')
   })
 
+  it('explains a resolved CLI path that does not exist on disk', () => {
+    expect(usageUnavailableMessage('ccusage CLI is missing: /pkg/ccusage/src/cli.js does not exist.')).toContain(
+      'ccusage CLI could not be started',
+    )
+  })
+
+  it('explains a buffer overrun rather than suggesting the config dir', () => {
+    const message = usageUnavailableMessage('stdout maxBuffer length exceeded')
+    expect(message).toContain('more data than this dashboard can buffer')
+    expect(message).not.toContain('CLAUDE_CONFIG_DIR')
+  })
+
   it('explains a bin entry pointing at a missing file', () => {
     const message = usageUnavailableMessage(
       "Command failed: node /pkg/ccusage/src/cli.js claude daily --json\nError: Cannot find module '/pkg/ccusage/src/cli.js'",

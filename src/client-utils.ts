@@ -299,11 +299,15 @@ export const usageUnavailableMessage = (error: string | null | undefined): strin
   if (
     detail.includes('unable to resolve the ccusage package') ||
     detail.includes('bin.ccusage') ||
+    detail.includes('ccusage cli is missing') ||
     detail.includes('cannot find module') ||
     detail.includes('module_not_found') ||
     spawnFailurePattern.test(detail)
   ) {
     return 'The ccusage CLI could not be started — its package is missing or unreadable in this install. Reinstalling the dashboard usually fixes this.'
+  }
+  if (detail.includes('maxbuffer') || detail.includes('enobufs')) {
+    return 'ccusage returned more data than this dashboard can buffer. Please open an issue — the limit needs raising.'
   }
   if (detail.includes('etimedout') || detail.includes('timed out')) {
     return 'ccusage timed out while reading Claude Code logs. It may still be indexing a large history — this panel retries automatically.'
