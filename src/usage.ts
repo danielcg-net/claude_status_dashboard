@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
 
 const execFileAsync = promisify(execFile)
 
@@ -80,7 +81,67 @@ const emptyTotals: UsageTotals = {
   totalCost: 0,
 }
 
-const ccusageBin = fileURLToPath(new URL('../node_modules/.bin/ccusage', import.meta.url))
+/** Maximum stdout we accept from a single ccusage invocation. The Node default
+ *  (1 MB) is easily exceeded by `daily --instances` on machines with a large
+ *  `~/.claude/projects` history, which used to surface as "not available".
+ *  Node grows this buffer as output arrives rather than preallocating it, but
+ *  four concurrent invocations still bound worst-case memory — hence 32 MB
+ *  rather than something arbitrarily large. */
+const ccusageMaxBuffer = 32 * 1024 * 1024
+
+/** Wall-clock budget for a single ccusage invocation. */
+const ccusageTimeoutMs = 15_000
+
+type CcusageScript =
+  | { readonly ok: true; readonly scriptPath: string }
+  | { readonly ok: false; readonly error: string }
+
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+/** Derives the absolute path of ccusage's CLI entry point from its own
+ *  `package.json` location and `bin` field. Exported for testing. */
+export const ccusageScriptPathFrom = (packageJsonPath: string, binField: unknown): string | null => {
+  const relativePath =
+    typeof binField === 'string'
+      ? binField
+      : typeof binField === 'object' && binField !== null && 'ccusage' in binField
+        ? (binField as Record<string, unknown>).ccusage
+        : null
+
+  if (typeof relativePath !== 'string' || relativePath.length === 0) {
+    return null
+  }
+
+  return resolve(dirname(packageJsonPath), relativePath)
+}
+
+/** Locates the ccusage CLI through Node's module resolver rather than a
+ *  hardcoded `../node_modules/.bin` path. npm hoists `ccusage` to the shared
+ *  root under `npx`/`npm install -g`, so this package may have no nested
+ *  `node_modules` at all — the resolver handles hoisted, nested, and pnpm
+ *  layouts alike. Resolution failures are captured instead of thrown so an
+ *  unusable install degrades to an actionable API error, not a boot crash. */
+const resolveCcusageScript = (): CcusageScript => {
+  try {
+    const packageJsonPath = createRequire(import.meta.url).resolve('ccusage/package.json')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { readonly bin?: unknown }
+    const scriptPath = ccusageScriptPathFrom(packageJsonPath, packageJson.bin)
+
+    if (scriptPath === null) {
+      return { ok: false, error: `ccusage package at ${packageJsonPath} declares no "bin.ccusage" entry.` }
+    }
+
+    // Report a bin entry that points nowhere directly, rather than spawning a
+    // child just to read MODULE_NOT_FOUND back out of its stderr.
+    return existsSync(scriptPath)
+      ? { ok: true, scriptPath }
+      : { ok: false, error: `ccusage CLI is missing: ${scriptPath} does not exist.` }
+  } catch (error) {
+    return { ok: false, error: `Unable to resolve the ccusage package: ${errorMessage(error)}` }
+  }
+}
+
+const ccusageScript = resolveCcusageScript()
 
 const isRecord = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -202,14 +263,46 @@ const parseJson = (stdout: string): unknown => JSON.parse(stdout) as unknown
 const claudeConfigDir = (): string =>
   process.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_HOME ?? join(homedir(), '.claude')
 
+/** `execFile` also kills the child when `maxBuffer` is exceeded, so `killed`
+ *  alone cannot distinguish that from a timeout. */
+const isMaxBufferFailure = (error: unknown): boolean => {
+  const code = (error as { readonly code?: unknown }).code
+  return (
+    code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ||
+    code === 'ENOBUFS' ||
+    errorMessage(error).toLowerCase().includes('maxbuffer')
+  )
+}
+
+/** `execFile` reports a timeout by killing the child, not by putting anything
+ *  identifiable in the message — so the caller has to recognize it here. */
+const isTimeoutFailure = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { readonly killed?: unknown }).killed === true &&
+  !isMaxBufferFailure(error)
+
+/** Runs the ccusage CLI through the current Node binary. Spawning
+ *  `process.execPath` with the resolved script avoids relying on the shebang
+ *  or the executable bit of the `.bin` shim, which npm does not always
+ *  preserve (and which does not exist on Windows). */
 const runCcusage = async (args: readonly string[]): Promise<unknown> => {
-  const { stdout } = await execFileAsync(ccusageBin, [...args], {
-    timeout: 15_000,
+  if (!ccusageScript.ok) {
+    throw new Error(ccusageScript.error)
+  }
+
+  const { stdout } = await execFileAsync(process.execPath, [ccusageScript.scriptPath, ...args], {
+    timeout: ccusageTimeoutMs,
+    maxBuffer: ccusageMaxBuffer,
     env: {
       ...process.env,
       CLAUDE_CONFIG_DIR: claudeConfigDir(),
       LOG_LEVEL: process.env.LOG_LEVEL ?? '1',
     },
+  }).catch((error: unknown) => {
+    throw isTimeoutFailure(error)
+      ? new Error(`ccusage timed out after ${ccusageTimeoutMs}ms: ${errorMessage(error)}`)
+      : error
   })
 
   return parseJson(stdout)

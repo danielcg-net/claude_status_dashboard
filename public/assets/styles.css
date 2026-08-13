@@ -251,6 +251,18 @@ h1 {
   font-size: 0.84rem;
 }
 
+.usage__error {
+  margin-top: 8px;
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  /* ccusage failures are multi-line (command line, then stderr) — keep the
+     line breaks instead of collapsing them into one paragraph. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .usage__windows {
   display: flex;
   align-items: center;

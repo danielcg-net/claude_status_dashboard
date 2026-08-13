@@ -274,6 +274,51 @@ export const shortProjectName = (projectKey: string): string => {
 export const projectKeyToPath = (projectKey: string): string =>
   '/' + projectKey.replace(/^-+/, '').split('-').join('/')
 
+const usageConfigHint = 'ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.'
+
+/** Node reports a failed spawn as `spawn <path> <CODE>` — matching the pair
+ *  keeps unrelated ENOENT/EACCES errors from ccusage's own file reads out of
+ *  the "CLI cannot start" bucket. */
+const spawnFailurePattern = /spawn\b[^\n]*\b(enoent|eacces|eperm|enotdir|enoexec)\b/
+
+/** Turns the raw ccusage failure into an explanation that points at the real
+ *  cause. A missing/unspawnable CLI has nothing to do with log mounts or
+ *  CLAUDE_CONFIG_DIR, so showing the config hint for it sends users down the
+ *  wrong path (see issue #65). */
+export const usageUnavailableMessage = (error: string | null | undefined): string => {
+  const detail = (error ?? '').trim().toLowerCase()
+
+  if (detail.length === 0) {
+    return usageConfigHint
+  }
+  // Only a genuine spawn failure means the CLI itself is unusable. A bare
+  // ENOENT can also come from ccusage failing to open a log file, which is a
+  // completely different problem.
+  // `cannot find module` covers a ccusage package whose `bin` entry points at
+  // a file that is not there — the process starts, then Node exits immediately.
+  if (
+    detail.includes('unable to resolve the ccusage package') ||
+    detail.includes('bin.ccusage') ||
+    detail.includes('ccusage cli is missing') ||
+    detail.includes('cannot find module') ||
+    detail.includes('module_not_found') ||
+    spawnFailurePattern.test(detail)
+  ) {
+    return 'The ccusage CLI could not be started — its package is missing or unreadable in this install. Reinstalling the dashboard usually fixes this.'
+  }
+  if (detail.includes('maxbuffer') || detail.includes('enobufs')) {
+    return 'ccusage returned more data than this dashboard can buffer. Please open an issue — the limit needs raising.'
+  }
+  if (detail.includes('etimedout') || detail.includes('timed out')) {
+    return 'ccusage timed out while reading Claude Code logs. It may still be indexing a large history — this panel retries automatically.'
+  }
+  if (detail.includes('eacces') || detail.includes('eperm')) {
+    return 'ccusage could not read the Claude Code logs — check the permissions on your Claude config directory.'
+  }
+
+  return usageConfigHint
+}
+
 export const projectCandidatesFor = (session: Session): readonly string[] =>
   [session.usageProject, session.id, session.name]
     .filter((value): value is string => Boolean(value))
