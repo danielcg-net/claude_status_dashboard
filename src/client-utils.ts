@@ -274,6 +274,31 @@ export const shortProjectName = (projectKey: string): string => {
 export const projectKeyToPath = (projectKey: string): string =>
   '/' + projectKey.replace(/^-+/, '').split('-').join('/')
 
+const usageConfigHint = 'ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.'
+
+/** Turns the raw ccusage failure into an explanation that points at the real
+ *  cause. A missing/unspawnable CLI has nothing to do with log mounts or
+ *  CLAUDE_CONFIG_DIR, so showing the config hint for it sends users down the
+ *  wrong path (see issue #65). */
+export const usageUnavailableMessage = (error: string | null): string => {
+  const detail = (error ?? '').toLowerCase()
+
+  if (detail.length === 0) {
+    return usageConfigHint
+  }
+  if (detail.includes('unable to resolve the ccusage package') || detail.includes('bin.ccusage') || detail.includes('enoent') || detail.includes('spawn')) {
+    return 'The ccusage CLI could not be started — its package is missing or unreadable in this install. Reinstalling the dashboard usually fixes this.'
+  }
+  if (detail.includes('etimedout') || detail.includes('timed out')) {
+    return 'ccusage timed out while reading Claude Code logs. It may still be indexing a large history — this panel retries automatically.'
+  }
+  if (detail.includes('eacces') || detail.includes('eperm')) {
+    return 'ccusage could not read the Claude Code logs — check the permissions on your Claude config directory.'
+  }
+
+  return usageConfigHint
+}
+
 export const projectCandidatesFor = (session: Session): readonly string[] =>
   [session.usageProject, session.id, session.name]
     .filter((value): value is string => Boolean(value))

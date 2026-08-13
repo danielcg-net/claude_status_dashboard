@@ -1,6 +1,6 @@
 // Usage section rendering — cost windows, metrics, active block, excluded repos.
 
-import { costWindowLabels, daysForWindow, recentUsageDays, sumUsageDays } from './client-utils.js'
+import { costWindowLabels, daysForWindow, recentUsageDays, sumUsageDays, usageUnavailableMessage } from './client-utils.js'
 import { createElement } from './ui-dom.js'
 import { formatDayLabel, formatMoney, formatNumber, formatRelative, formatDateLabel, formatLocalTime } from './ui-format.js'
 import { ui } from './ui-state.js'
@@ -48,7 +48,10 @@ export const renderUsage = (usage: UsageSummary | null): HTMLElement => {
   if (!usage.available) {
     return createElement('section', { class: 'usage usage--unavailable', 'aria-label': 'Claude usage' }, [
       createElement('h2', {}, ['Claude usage']),
-      createElement('p', {}, ['ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.']),
+      createElement('p', {}, [usageUnavailableMessage(usage.error)]),
+      // Surface the underlying failure verbatim — the generic hint above is a
+      // guess, this is what actually went wrong.
+      ...(usage.error === null ? [] : [createElement('p', { class: 'usage__error' }, [usage.error])]),
     ])
   }
 

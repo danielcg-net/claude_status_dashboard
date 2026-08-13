@@ -4,6 +4,7 @@ import {
   type UsageSession,
   matchCCUsageSessions,
   sumUsageSessions,
+  usageUnavailableMessage,
 } from '../src/client-utils.js'
 
 // These are the key pure utility functions from src/client.ts, tested in isolation.
@@ -415,5 +416,43 @@ describe('sumUsageSessions', () => {
     const result = sumUsageSessions(sessions)
     expect(result?.totalCost).toBe(0.015)
     expect(result?.totalTokens).toBe(500)
+  })
+})
+
+describe('usageUnavailableMessage', () => {
+  const configHint = 'ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.'
+
+  it('falls back to the config hint when no error was reported', () => {
+    expect(usageUnavailableMessage(null)).toBe(configHint)
+    expect(usageUnavailableMessage('')).toBe(configHint)
+  })
+
+  it('explains a spawn failure instead of blaming the config dir (issue #65)', () => {
+    const message = usageUnavailableMessage('spawn /home/u/.npm/_npx/x/node_modules/.bin/ccusage ENOENT')
+    expect(message).toContain('ccusage CLI could not be started')
+    expect(message).not.toContain('CLAUDE_CONFIG_DIR')
+  })
+
+  it('explains an unresolvable ccusage package', () => {
+    const message = usageUnavailableMessage("Unable to resolve the ccusage package: Cannot find module 'ccusage/package.json'")
+    expect(message).toContain('ccusage CLI could not be started')
+  })
+
+  it('explains a missing bin entry', () => {
+    expect(usageUnavailableMessage('ccusage package at /p/package.json declares no "bin.ccusage" entry.')).toContain(
+      'ccusage CLI could not be started',
+    )
+  })
+
+  it('explains a timeout', () => {
+    expect(usageUnavailableMessage('Command failed: ETIMEDOUT')).toContain('timed out')
+  })
+
+  it('explains a permission problem', () => {
+    expect(usageUnavailableMessage("EACCES: permission denied, open '/home/u/.claude'")).toContain('permissions')
+  })
+
+  it('keeps the config hint for unrecognized failures', () => {
+    expect(usageUnavailableMessage('Unexpected token < in JSON at position 0')).toBe(configHint)
   })
 })

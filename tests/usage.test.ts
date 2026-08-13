@@ -10,7 +10,7 @@ vi.mock('node:util', () => ({
   promisify: vi.fn(() => mockExecFileAsync),
 }))
 
-import { fetchUsageSummary } from '../src/usage.js'
+import { ccusageScriptPathFrom, fetchUsageSummary } from '../src/usage.js'
 
 beforeEach(() => {
   mockExecFileAsync.mockReset()
@@ -153,7 +153,54 @@ const makeSessionsJson = () => ({
   ],
 })
 
+describe('ccusageScriptPathFrom', () => {
+  it('resolves the bin entry relative to the package.json directory', () => {
+    expect(ccusageScriptPathFrom('/npx/hash/node_modules/ccusage/package.json', { ccusage: './src/cli.js' })).toBe(
+      '/npx/hash/node_modules/ccusage/src/cli.js',
+    )
+  })
+
+  it('supports a string bin field', () => {
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', 'dist/cli.js')).toBe('/pkgs/ccusage/dist/cli.js')
+  })
+
+  it('returns null when no usable bin entry exists', () => {
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', undefined)).toBeNull()
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', {})).toBeNull()
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', { ccusage: '' })).toBeNull()
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', { other: './cli.js' })).toBeNull()
+    expect(ccusageScriptPathFrom('/pkgs/ccusage/package.json', null)).toBeNull()
+  })
+})
+
 describe('fetchUsageSummary', () => {
+  it('spawns the resolved ccusage CLI with the current node binary', async () => {
+    mockExecFileAsync
+      .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ projects: {} }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ blocks: [] }) })
+      .mockResolvedValueOnce({ stdout: JSON.stringify({ sessions: [] }) })
+
+    await fetchUsageSummary()
+
+    const [file, args] = mockExecFileAsync.mock.calls[0] as [string, readonly string[]]
+    expect(file).toBe(process.execPath)
+    // Resolved through Node's resolver, so it must not depend on this package
+    // having its own nested node_modules (issue #65).
+    expect(args[0]).toMatch(/[\\/]ccusage[\\/].*\.js$/)
+    expect(args[0]).not.toContain('node_modules/.bin')
+    expect(args.slice(1)).toEqual(['claude', 'daily', '--json'])
+  })
+
+  it('raises the stdout buffer above the 1 MB Node default', async () => {
+    mockExecFileAsync.mockResolvedValue({ stdout: JSON.stringify({}) })
+
+    await fetchUsageSummary()
+
+    const options = mockExecFileAsync.mock.calls[0]?.[2] as { readonly maxBuffer?: number }
+    expect(options.maxBuffer).toBeGreaterThan(1024 * 1024)
+  })
+
   it('returns available summary with projects, blocks, and sessions', async () => {
     mockExecFileAsync
       .mockResolvedValueOnce({ stdout: JSON.stringify(makeDailyJson()) })
