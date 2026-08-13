@@ -85,8 +85,10 @@ describe('saveSessions failure reporting', () => {
     expect(await saveSessions(tmpDir, store)).toEqual({ ok: true })
   })
 
-  // Permission bits do not stop root, so this cannot assert a failure there.
-  it.skipIf(process.getuid?.() === 0)('reports the reason and error code when the target is unwritable', async () => {
+  // Permission bits do not stop root, and Windows does not enforce POSIX
+  // directory modes at all, so neither can assert a failure here.
+  const cannotDenyWrites = process.getuid?.() === 0 || process.platform === 'win32'
+  it.skipIf(cannotDenyWrites)('reports the reason and error code when the target is unwritable', async () => {
     const { mkdir, chmod } = await import('node:fs/promises')
     const readOnlyDir = join(tmpDir, 'read-only')
     await mkdir(readOnlyDir, { recursive: true })

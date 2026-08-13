@@ -413,6 +413,7 @@ export const __resetForTests = async (): Promise<void> => {
   rt.state = { sessions: new Map(), notifySettings: notifySettingsSchema.parse({}), beepSettings: beepSettingsSchema.parse({}) }
   rt.cache.usage = null
   rt.cache.version = null
+  rt.health.persistError = null
   rt.queues.save = Promise.resolve()
   rt.queues.notifySave = Promise.resolve()
   rt.queues.beepSave = Promise.resolve()

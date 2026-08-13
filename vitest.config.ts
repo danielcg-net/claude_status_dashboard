@@ -9,6 +9,9 @@ export default defineConfig({
   test: {
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     setupFiles: ['tests/setup.ts'],
+    // Wipes the fixed DATA_DIR below so a run never inherits the previous
+    // run's session cache.
+    globalSetup: ['tests/global-setup.ts'],
     env: {
       // Never the default './data'. tests/server.test.ts drives the real app,
       // whose mutations persist through enqueueSave() — pointed at the default
