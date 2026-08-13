@@ -254,10 +254,24 @@ const parseJson = (stdout: string): unknown => JSON.parse(stdout) as unknown
 const claudeConfigDir = (): string =>
   process.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_HOME ?? join(homedir(), '.claude')
 
+/** `execFile` also kills the child when `maxBuffer` is exceeded, so `killed`
+ *  alone cannot distinguish that from a timeout. */
+const isMaxBufferFailure = (error: unknown): boolean => {
+  const code = (error as { readonly code?: unknown }).code
+  return (
+    code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ||
+    code === 'ENOBUFS' ||
+    errorMessage(error).toLowerCase().includes('maxbuffer')
+  )
+}
+
 /** `execFile` reports a timeout by killing the child, not by putting anything
  *  identifiable in the message — so the caller has to recognize it here. */
 const isTimeoutFailure = (error: unknown): boolean =>
-  typeof error === 'object' && error !== null && (error as { readonly killed?: unknown }).killed === true
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { readonly killed?: unknown }).killed === true &&
+  !isMaxBufferFailure(error)
 
 /** Runs the ccusage CLI through the current Node binary. Spawning
  *  `process.execPath` with the resolved script avoids relying on the shebang

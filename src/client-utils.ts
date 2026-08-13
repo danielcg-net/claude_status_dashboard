@@ -286,7 +286,7 @@ const spawnFailurePattern = /spawn\b[^\n]*\b(enoent|eacces|eperm|enotdir|enoexec
  *  CLAUDE_CONFIG_DIR, so showing the config hint for it sends users down the
  *  wrong path (see issue #65). */
 export const usageUnavailableMessage = (error: string | null | undefined): string => {
-  const detail = (error ?? '').toLowerCase()
+  const detail = (error ?? '').trim().toLowerCase()
 
   if (detail.length === 0) {
     return usageConfigHint

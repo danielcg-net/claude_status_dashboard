@@ -257,6 +257,22 @@ describe('fetchUsageSummary', () => {
     expect(result.error).toContain('timed out')
   })
 
+  it('does not mislabel a maxBuffer overflow as a timeout', async () => {
+    // execFile kills the child for maxBuffer overruns too, so `killed: true`
+    // on its own is not enough to call something a timeout.
+    mockExecFileAsync.mockRejectedValue(
+      Object.assign(new Error('stdout maxBuffer length exceeded'), {
+        killed: true,
+        code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+      }),
+    )
+
+    const result = await fetchUsageSummary()
+
+    expect(result.error).not.toContain('timed out')
+    expect(result.error).toContain('maxBuffer')
+  })
+
   it('passes non-timeout failures through unchanged', async () => {
     mockExecFileAsync.mockRejectedValue(Object.assign(new Error('spawn node ENOENT'), { killed: false }))
 

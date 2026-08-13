@@ -49,7 +49,7 @@ export const renderUsage = (usage: UsageSummary | null): HTMLElement => {
     // `error` comes off the wire, so narrow it once here and treat anything
     // that is not a non-empty string as "no detail" — both the headline and
     // the verbatim paragraph below rely on this, not on the declared type.
-    const errorDetail = typeof usage.error === 'string' && usage.error.length > 0 ? usage.error : null
+    const errorDetail = typeof usage.error === 'string' && usage.error.trim().length > 0 ? usage.error : null
 
     return createElement('section', { class: 'usage usage--unavailable', 'aria-label': 'Claude usage' }, [
       createElement('h2', {}, ['Claude usage']),

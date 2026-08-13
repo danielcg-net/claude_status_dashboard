@@ -44,6 +44,10 @@ describe('renderUsage — unavailable state', () => {
     expect(section.textContent).not.toContain('CLAUDE_CONFIG_DIR')
   })
 
+  it('ignores a whitespace-only error string', () => {
+    expect(renderUsage(unavailable({ error: '   \n  ' })).querySelector('.usage__error')).toBeNull()
+  })
+
   it('does not trust a non-string error value from the wire', () => {
     // A malformed payload must not take the panel down: the headline falls
     // back to the hint and no detail paragraph is rendered.
