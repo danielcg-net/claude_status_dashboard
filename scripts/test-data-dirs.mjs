@@ -26,9 +26,11 @@ export const e2ePort = process.env.E2E_PORT ?? '8788'
 export const wipeTestDataDir = (dir) => {
   const target = resolve(repoRoot, dir)
 
-  if (target !== testDataRoot && !target.startsWith(testDataRoot + sep)) {
+  // Strictly below the root: an E2E_DATA_DIR of `.test-data` would otherwise
+  // take out every other suite's directory along with its own.
+  if (!target.startsWith(testDataRoot + sep)) {
     throw new Error(
-      `Refusing to delete ${target}: test data directories must live under ${testDataRoot}.`,
+      `Refusing to delete ${target}: test data directories must live inside ${testDataRoot}.`,
     )
   }
 
