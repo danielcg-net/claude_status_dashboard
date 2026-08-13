@@ -28,6 +28,8 @@ export { costWindowLabels } from './client-utils.js'
 export type ApiState = {
   readonly sessions: readonly Session[]
   readonly redAlertAfterMs: number
+  // Reason the server could not write its session cache, or null when healthy.
+  readonly persistError: string | null
 }
 
 export type UsageSummary = {

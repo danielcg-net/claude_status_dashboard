@@ -79,6 +79,36 @@ describe('evictStaleSessions', () => {
   })
 })
 
+describe('saveSessions failure reporting', () => {
+  it('reports success so callers can clear a previous failure', async () => {
+    const store: SessionStore = new Map([['abc', makeSession({ id: 'abc' })]])
+    expect(await saveSessions(tmpDir, store)).toEqual({ ok: true })
+  })
+
+  // Permission bits do not stop root, and Windows does not enforce POSIX
+  // directory modes at all, so neither can assert a failure here.
+  const cannotDenyWrites = process.getuid?.() === 0 || process.platform === 'win32'
+  it.skipIf(cannotDenyWrites)('reports the reason and error code when the target is unwritable', async () => {
+    const { mkdir, chmod } = await import('node:fs/promises')
+    const readOnlyDir = join(tmpDir, 'read-only')
+    await mkdir(readOnlyDir, { recursive: true })
+    await chmod(readOnlyDir, 0o500)
+
+    try {
+      const result = await saveSessions(readOnlyDir, new Map([['abc', makeSession({ id: 'abc' })]]))
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).toContain('sessions.json')
+        expect(result.error).toContain('EACCES')
+      }
+    } finally {
+      // Always restore, or the temp dir cannot be cleaned up.
+      await chmod(readOnlyDir, 0o700)
+    }
+  })
+})
+
 describe('saveSessions / loadSessions round-trip', () => {
   it('persists and reloads sessions faithfully', async () => {
     const session = makeSession({ id: 'abc', name: 'My Session', status: 'attention' })

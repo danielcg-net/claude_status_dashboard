@@ -1,6 +1,7 @@
 node_modules/
 dist/
 data/
+.test-data/
 public/assets/client.js
 public/assets/client.js.map
 .env
