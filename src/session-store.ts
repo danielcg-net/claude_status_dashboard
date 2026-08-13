@@ -67,7 +67,9 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
 export type SaveResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
 const saveFailure = (message: string, error: unknown): SaveResult => {
-  const code = (error as NodeJS.ErrnoException).code
+  // Narrow before reaching for `code` — fs rejects with an Error, but nothing
+  // guarantees that for an arbitrary thrown value.
+  const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
   return { ok: false, error: code ? `${message} (${code})` : message }
 }
 

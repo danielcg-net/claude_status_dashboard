@@ -1,16 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Deliberately not 8787: the suite creates, mutates, and deletes sessions, so
-// pointing it at the port a real dashboard listens on would drive that instance
-// (`reuseExistingServer` would hand the tests the running server) and rewrite
-// its session store.
-const e2ePort = process.env.E2E_PORT ?? '8788'
-
-// Deliberately not './data' — see DATA_DIR in vitest.config.ts.
-const e2eDataDir = process.env.E2E_DATA_DIR ?? '.test-data/e2e'
+import { e2eDataDir, e2ePort } from './e2e/test-data-dir.js'
 
 export default defineConfig({
   testDir: './e2e',
+  // Wipes the fixed data directory so a run never inherits the previous run's
+  // sessions.
+  globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
