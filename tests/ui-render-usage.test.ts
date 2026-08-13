@@ -44,6 +44,13 @@ describe('renderUsage — unavailable state', () => {
     expect(section.textContent).not.toContain('CLAUDE_CONFIG_DIR')
   })
 
+  it('does not trust a non-string error value from the wire', () => {
+    // A malformed payload must not take the panel down: the headline falls
+    // back to the hint and no detail paragraph is rendered.
+    expect(() => renderUsage(unavailable({ error: 500 }))).not.toThrow()
+    expect(renderUsage(unavailable({ error: { message: 'boom' } })).querySelector('.usage__error')).toBeNull()
+  })
+
   it('falls back to the config hint when no error detail is available', () => {
     expect(renderUsage(unavailable()).textContent).toContain('CLAUDE_CONFIG_DIR')
   })

@@ -294,7 +294,15 @@ export const usageUnavailableMessage = (error: string | null | undefined): strin
   // Only a genuine spawn failure means the CLI itself is unusable. A bare
   // ENOENT can also come from ccusage failing to open a log file, which is a
   // completely different problem.
-  if (detail.includes('unable to resolve the ccusage package') || detail.includes('bin.ccusage') || spawnFailurePattern.test(detail)) {
+  // `cannot find module` covers a ccusage package whose `bin` entry points at
+  // a file that is not there — the process starts, then Node exits immediately.
+  if (
+    detail.includes('unable to resolve the ccusage package') ||
+    detail.includes('bin.ccusage') ||
+    detail.includes('cannot find module') ||
+    detail.includes('module_not_found') ||
+    spawnFailurePattern.test(detail)
+  ) {
     return 'The ccusage CLI could not be started — its package is missing or unreadable in this install. Reinstalling the dashboard usually fixes this.'
   }
   if (detail.includes('etimedout') || detail.includes('timed out')) {

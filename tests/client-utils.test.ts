@@ -450,6 +450,13 @@ describe('usageUnavailableMessage', () => {
     expect(message).toContain('ccusage CLI could not be started')
   })
 
+  it('explains a bin entry pointing at a missing file', () => {
+    const message = usageUnavailableMessage(
+      "Command failed: node /pkg/ccusage/src/cli.js claude daily --json\nError: Cannot find module '/pkg/ccusage/src/cli.js'",
+    )
+    expect(message).toContain('ccusage CLI could not be started')
+  })
+
   it('explains a missing bin entry', () => {
     expect(usageUnavailableMessage('ccusage package at /p/package.json declares no "bin.ccusage" entry.')).toContain(
       'ccusage CLI could not be started',
