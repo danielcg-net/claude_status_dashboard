@@ -66,11 +66,14 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
  *  session vanished. Callers get the reason back so it can reach the UI. */
 export type SaveResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
+/** fs rejects with an ErrnoException, but nothing guarantees that for an
+ *  arbitrary thrown value — so check rather than assert. */
+const errnoCodeOf = (error: unknown): string | undefined =>
+  error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined
+
 const saveFailure = (message: string, error: unknown): SaveResult => {
-  // Narrow before reaching for `code` — fs rejects with an Error, but nothing
-  // guarantees that for an arbitrary thrown value.
-  const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
-  return { ok: false, error: code ? `${message} (${code})` : message }
+  const code = errnoCodeOf(error)
+  return { ok: false, error: code === undefined ? message : `${message} (${code})` }
 }
 
 export const saveSessions = async (dataDir: string, sessions: SessionStore): Promise<SaveResult> => {

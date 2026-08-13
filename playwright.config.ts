@@ -1,12 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { e2eDataDir, e2ePort } from './e2e/test-data-dir.js'
+import { e2eDataDir, e2ePort } from './scripts/test-data-dirs.mjs'
 
 export default defineConfig({
   testDir: './e2e',
-  // Wipes the fixed data directory so a run never inherits the previous run's
-  // sessions.
-  globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -23,7 +20,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'node dist/server.js',
+    // The wipe has to run here, not in globalSetup: Playwright starts the web
+    // server first, so a setup hook would delete the directory only after the
+    // server had already loaded the previous run's sessions into memory.
+    command: `node scripts/test-data-dirs.mjs ${e2eDataDir} && node dist/server.js`,
     url: `http://localhost:${e2ePort}/api/health`,
     // Always start a dedicated server. Reusing one would silently discard the
     // isolated DATA_DIR below, since the environment is only applied to a

@@ -13,9 +13,13 @@ vi.mock('../src/session-store.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../src/usage.js', () => ({
-  fetchUsageSummary: vi.fn().mockResolvedValue({ available: false, error: null, projects: {} }),
-}))
+vi.mock('../src/usage.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/usage.js')>()
+  return {
+    ...actual,
+    fetchUsageSummary: vi.fn().mockResolvedValue({ available: false, error: null, projects: {} }),
+  }
+})
 
 const saveError = 'Cannot write the session cache at /data/sessions.json (EACCES)'
 mockSaveSessions.mockResolvedValue({ ok: false, error: saveError })

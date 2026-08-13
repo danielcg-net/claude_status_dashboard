@@ -79,9 +79,14 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 - Run: `npm run test:e2e` (build + test)
 - Playwright config starts `node dist/server.js` via `webServer` on port **8788**
   with `DATA_DIR=.test-data/e2e` — never 8787 or `./data`, so a real dashboard
-  running locally is left alone. Override with `E2E_PORT` / `E2E_DATA_DIR`.
-  `reuseExistingServer` is `false`: reusing a server would discard that isolated
+  running locally is left alone. Override with `E2E_PORT` / `E2E_DATA_DIR`
+  (the data dir must stay under `.test-data/`; `scripts/test-data-dirs.mjs`
+  refuses anything else).
+- `reuseExistingServer` is `false`: reusing a server would discard that isolated
   environment, since it only applies to a server this config launches.
+- The stale-state wipe runs in the `webServer` command, not a setup hook —
+  Playwright boots the server before `globalSetup`, so a hook would delete the
+  directory only after the server had loaded the previous run's sessions.
 - Follow `playwright-best-practices` and `playwright-page-objects` skills
 
 ## Versioning

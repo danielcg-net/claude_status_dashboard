@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { render } from '../src/ui-render.js'
-import { ui } from '../src/ui-state.js'
+import { initialState, ui } from '../src/ui-state.js'
 
 // ui-render.ts keeps its shell containers in module state and builds them on the
 // first render, so the #app root has to be created once and reused — swapping it
@@ -14,7 +14,9 @@ beforeAll(() => {
 })
 
 const renderWith = (persistError: unknown): void => {
-  ui.state = { ...ui.state, sessions: [], usage: null, persistError } as typeof ui.state
+  // Spread initialState rather than a partial literal, so a field added to
+  // AppState later cannot leave this setup silently incomplete.
+  ui.state = { ...initialState, sessions: [], usage: null, persistError } as typeof ui.state
   render()
 }
 
