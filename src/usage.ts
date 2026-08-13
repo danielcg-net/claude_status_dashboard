@@ -86,6 +86,9 @@ const emptyTotals: UsageTotals = {
  *  `~/.claude/projects` history, which used to surface as "not available". */
 const ccusageMaxBuffer = 64 * 1024 * 1024
 
+/** Wall-clock budget for a single ccusage invocation. */
+const ccusageTimeoutMs = 15_000
+
 type CcusageScript =
   | { readonly ok: true; readonly scriptPath: string }
   | { readonly ok: false; readonly error: string }
@@ -251,6 +254,11 @@ const parseJson = (stdout: string): unknown => JSON.parse(stdout) as unknown
 const claudeConfigDir = (): string =>
   process.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_HOME ?? join(homedir(), '.claude')
 
+/** `execFile` reports a timeout by killing the child, not by putting anything
+ *  identifiable in the message — so the caller has to recognize it here. */
+const isTimeoutFailure = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && (error as { readonly killed?: unknown }).killed === true
+
 /** Runs the ccusage CLI through the current Node binary. Spawning
  *  `process.execPath` with the resolved script avoids relying on the shebang
  *  or the executable bit of the `.bin` shim, which npm does not always
@@ -261,13 +269,17 @@ const runCcusage = async (args: readonly string[]): Promise<unknown> => {
   }
 
   const { stdout } = await execFileAsync(process.execPath, [ccusageScript.scriptPath, ...args], {
-    timeout: 15_000,
+    timeout: ccusageTimeoutMs,
     maxBuffer: ccusageMaxBuffer,
     env: {
       ...process.env,
       CLAUDE_CONFIG_DIR: claudeConfigDir(),
       LOG_LEVEL: process.env.LOG_LEVEL ?? '1',
     },
+  }).catch((error: unknown) => {
+    throw isTimeoutFailure(error)
+      ? new Error(`ccusage timed out after ${ccusageTimeoutMs}ms: ${errorMessage(error)}`)
+      : error
   })
 
   return parseJson(stdout)

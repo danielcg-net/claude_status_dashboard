@@ -244,6 +244,27 @@ describe('fetchUsageSummary', () => {
     expect(result.sessions[1]?.totalCost).toBe(0.008)
   })
 
+  it('labels a killed child process as a timeout', async () => {
+    // execFile signals a timeout by killing the child — the message itself
+    // never says "timed out", so usage.ts has to add that itself.
+    mockExecFileAsync.mockRejectedValue(
+      Object.assign(new Error('Command failed: node cli.js claude daily --json'), { killed: true, signal: 'SIGTERM' }),
+    )
+
+    const result = await fetchUsageSummary()
+
+    expect(result.available).toBe(false)
+    expect(result.error).toContain('timed out')
+  })
+
+  it('passes non-timeout failures through unchanged', async () => {
+    mockExecFileAsync.mockRejectedValue(Object.assign(new Error('spawn node ENOENT'), { killed: false }))
+
+    const result = await fetchUsageSummary()
+
+    expect(result.error).toBe('spawn node ENOENT')
+  })
+
   it('handles ccusage failure gracefully', async () => {
     mockExecFileAsync.mockRejectedValue(new Error('ccusage not found'))
     const result = await fetchUsageSummary()

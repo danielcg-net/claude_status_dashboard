@@ -276,6 +276,11 @@ export const projectKeyToPath = (projectKey: string): string =>
 
 const usageConfigHint = 'ccusage data is not available. Mount Claude Code logs or set CLAUDE_CONFIG_DIR.'
 
+/** Node reports a failed spawn as `spawn <path> <CODE>` — matching the pair
+ *  keeps unrelated ENOENT/EACCES errors from ccusage's own file reads out of
+ *  the "CLI cannot start" bucket. */
+const spawnFailurePattern = /spawn\b[^\n]*\b(enoent|eacces|eperm|enotdir|enoexec)\b/
+
 /** Turns the raw ccusage failure into an explanation that points at the real
  *  cause. A missing/unspawnable CLI has nothing to do with log mounts or
  *  CLAUDE_CONFIG_DIR, so showing the config hint for it sends users down the
@@ -286,7 +291,10 @@ export const usageUnavailableMessage = (error: string | null): string => {
   if (detail.length === 0) {
     return usageConfigHint
   }
-  if (detail.includes('unable to resolve the ccusage package') || detail.includes('bin.ccusage') || detail.includes('enoent') || detail.includes('spawn')) {
+  // Only a genuine spawn failure means the CLI itself is unusable. A bare
+  // ENOENT can also come from ccusage failing to open a log file, which is a
+  // completely different problem.
+  if (detail.includes('unable to resolve the ccusage package') || detail.includes('bin.ccusage') || spawnFailurePattern.test(detail)) {
     return 'The ccusage CLI could not be started — its package is missing or unreadable in this install. Reinstalling the dashboard usually fixes this.'
   }
   if (detail.includes('etimedout') || detail.includes('timed out')) {

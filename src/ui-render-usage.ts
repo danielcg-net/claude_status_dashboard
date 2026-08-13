@@ -51,7 +51,9 @@ export const renderUsage = (usage: UsageSummary | null): HTMLElement => {
       createElement('p', {}, [usageUnavailableMessage(usage.error)]),
       // Surface the underlying failure verbatim — the generic hint above is a
       // guess, this is what actually went wrong.
-      ...(usage.error === null ? [] : [createElement('p', { class: 'usage__error' }, [usage.error])]),
+      ...(usage.error !== null && usage.error.length > 0
+        ? [createElement('p', { class: 'usage__error' }, [usage.error])]
+        : []),
     ])
   }
 

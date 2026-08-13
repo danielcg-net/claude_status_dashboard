@@ -433,6 +433,18 @@ describe('usageUnavailableMessage', () => {
     expect(message).not.toContain('CLAUDE_CONFIG_DIR')
   })
 
+  it('does not treat an ENOENT from ccusage own file reads as a spawn failure', () => {
+    const message = usageUnavailableMessage(
+      "Command failed: node /pkg/ccusage/src/cli.js claude daily --json\nENOENT: no such file or directory, open '/home/u/.claude/projects/x.jsonl'",
+    )
+    expect(message).not.toContain('ccusage CLI could not be started')
+    expect(message).toBe(configHint)
+  })
+
+  it('treats a spawn EACCES as an unstartable CLI rather than a log permission problem', () => {
+    expect(usageUnavailableMessage('spawn /pkg/ccusage/src/cli.js EACCES')).toContain('ccusage CLI could not be started')
+  })
+
   it('explains an unresolvable ccusage package', () => {
     const message = usageUnavailableMessage("Unable to resolve the ccusage package: Cannot find module 'ccusage/package.json'")
     expect(message).toContain('ccusage CLI could not be started')
@@ -446,6 +458,8 @@ describe('usageUnavailableMessage', () => {
 
   it('explains a timeout', () => {
     expect(usageUnavailableMessage('Command failed: ETIMEDOUT')).toContain('timed out')
+    // The wording src/usage.ts produces for a killed child process.
+    expect(usageUnavailableMessage('ccusage timed out after 15000ms: Command failed: node cli.js')).toContain('timed out')
   })
 
   it('explains a permission problem', () => {
