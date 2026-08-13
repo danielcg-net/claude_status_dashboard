@@ -185,6 +185,26 @@ const attachAlertControlEvents = (): void => {
 
 // ── Body content (rebuilt on each 2s refresh cycle) ──
 
+/** Sessions live in memory until the server writes its cache. When that write
+ *  fails the dashboard still looks perfectly healthy, so say it out loud —
+ *  otherwise the first restart silently discards every card on screen. */
+const renderPersistWarning = (): ReadonlyArray<HTMLElement> => {
+  const persistError = ui.state.persistError
+  if (typeof persistError !== 'string' || persistError.trim().length === 0) {
+    return []
+  }
+
+  return [
+    createElement('section', { class: 'persist-warning', role: 'alert', 'aria-label': 'Session persistence problem' }, [
+      createElement('strong', {}, ['Sessions are not being saved.']),
+      createElement('span', {}, [
+        ' The dashboard is keeping them in memory only — they will disappear when it restarts.',
+      ]),
+      createElement('p', { class: 'persist-warning__detail' }, [persistError]),
+    ]),
+  ]
+}
+
 const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
   // Pre-compute filtered + sorted + paged sessions for the grid
   const gridEligible = ui.state.sessions.filter((session) => {
@@ -209,6 +229,7 @@ const buildBodyContent = (): ReadonlyArray<HTMLElement> => {
   }
 
   return [
+    ...renderPersistWarning(),
     renderUsage(ui.state.usage),
     ui.state.usage?.available ? renderRepoExplorer(ui.state.usage) : createElement('section', { class: 'repo-explorer repo-explorer--empty', 'aria-label': 'Repo cost explorer' }, [
       createElement('h2', {}, ['Costs by repo']),

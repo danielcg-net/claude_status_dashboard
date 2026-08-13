@@ -61,7 +61,17 @@ export const loadSessions = async (dataDir: string, ttlMs: number): Promise<Sess
   }
 }
 
-export const saveSessions = async (dataDir: string, sessions: SessionStore): Promise<void> => {
+/** A failed save used to be logged and forgotten, so a dashboard that could not
+ *  persist anything looked healthy until its process restarted and every
+ *  session vanished. Callers get the reason back so it can reach the UI. */
+export type SaveResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
+
+const saveFailure = (message: string, error: unknown): SaveResult => {
+  const code = (error as NodeJS.ErrnoException).code
+  return { ok: false, error: code ? `${message} (${code})` : message }
+}
+
+export const saveSessions = async (dataDir: string, sessions: SessionStore): Promise<SaveResult> => {
   const dir = resolve(dataDir)
   const filePath = join(dir, SESSION_FILE)
   const tmpPath = `${filePath}.tmp`
@@ -69,13 +79,15 @@ export const saveSessions = async (dataDir: string, sessions: SessionStore): Pro
     await mkdir(dir, { recursive: true })
   } catch (error) {
     console.error(`Failed to create session cache directory (${dir}):`, error)
-    return
+    return saveFailure(`Cannot create the session cache directory ${dir}`, error)
   }
   try {
     await writeFile(tmpPath, JSON.stringify([...sessions.values()], null, 2), 'utf-8')
     await rename(tmpPath, filePath)
+    return { ok: true }
   } catch (error) {
     console.error(`Failed to save sessions to cache (${filePath}):`, error)
     await unlink(tmpPath).catch(() => undefined)
+    return saveFailure(`Cannot write the session cache at ${filePath}`, error)
   }
 }

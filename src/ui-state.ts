@@ -10,6 +10,7 @@ const toolbarPrefs = loadToolbarPrefs()
 export const initialState: AppState = {
   sessions: [],
   redAlertAfterMs: 300_000,
+  persistError: null,
   audioEnabled: false,
   lastBeepAt: 0,
   beepCount: 0,

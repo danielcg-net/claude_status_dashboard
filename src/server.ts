@@ -69,6 +69,10 @@ const rt = {
     deletedViaPanel: false,
     lastScope: 'global' as 'global' | 'project',
   },
+  health: {
+    // Reason the last session save failed, or null when persistence is working.
+    persistError: null as string | null,
+  },
   queues: {
     save: Promise.resolve() as Promise<void>,
     notifySave: Promise.resolve() as Promise<void>,
@@ -112,8 +116,16 @@ const versionCheckEnabled = (process.env.VERSION_CHECK_ENABLED ?? 'true') !== 'f
 // always reflects the latest in-memory state even when multiple mutations queue up.
 const enqueueSave = (): void => {
   rt.queues.save = rt.queues.save
-    .then(() => saveSessions(dataDir, rt.state.sessions))
-    .catch((err) => { console.error('Failed to persist sessions:', err) })
+    .then(async () => {
+      const result = await saveSessions(dataDir, rt.state.sessions)
+      // Remember the latest outcome so /api/sessions can warn that everything
+      // on screen is in-memory only and will not survive a restart.
+      rt.health.persistError = result.ok ? null : result.error
+    })
+    .catch((err: unknown) => {
+      console.error('Failed to persist sessions:', err)
+      rt.health.persistError = err instanceof Error ? err.message : 'Cannot write the session cache.'
+    })
 }
 
 const enqueueSaveNotifySettings = (): void => {
@@ -143,6 +155,7 @@ app.get('/api/health', (context) =>
     ok: true,
     service: 'claude-status-dashboard',
     redAlertAfterMs,
+    persistError: rt.health.persistError,
   }),
 )
 
@@ -205,6 +218,7 @@ app.get('/api/sessions', (context) =>
   context.json({
     sessions: serializeSessions(rt.state.sessions),
     redAlertAfterMs,
+    persistError: rt.health.persistError,
   }),
 )
 

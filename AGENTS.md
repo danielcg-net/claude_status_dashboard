@@ -68,12 +68,20 @@ Instructions for coding agents working on this project (Claude Code, Codex, etc.
 - `tests/server.test.ts` — HTTP endpoints via Hono `app.request()`
 - `tests/client-utils.test.ts` — pure utility functions
 - Run: `npm test` (all), `npx vitest run <file>` (single file)
+- **Tests never touch `./data`.** `vitest.config.ts` pins `DATA_DIR` to
+  `.test-data/unit`, because `tests/server.test.ts` drives the real app and its
+  mutations persist — on the default it would overwrite the sessions and
+  notification settings of a dashboard running from this checkout.
 
 ### E2E tests (Playwright)
 
 - `e2e/dashboard.spec.ts` — smoke tests against running server
 - Run: `npm run test:e2e` (build + test)
-- Playwright config starts `node dist/server.js` via `webServer`
+- Playwright config starts `node dist/server.js` via `webServer` on port **8788**
+  with `DATA_DIR=.test-data/e2e` — never 8787 or `./data`, so a real dashboard
+  running locally is left alone. Override with `E2E_PORT` / `E2E_DATA_DIR`.
+  `reuseExistingServer` is `false`: reusing a server would discard that isolated
+  environment, since it only applies to a server this config launches.
 - Follow `playwright-best-practices` and `playwright-page-objects` skills
 
 ## Versioning

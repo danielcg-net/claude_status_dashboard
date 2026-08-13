@@ -77,6 +77,26 @@ describe('GET /api/health', () => {
   })
 })
 
+describe('persistence health reporting', () => {
+  it('reports persistError on GET /api/sessions', async () => {
+    const res = await app.request('/api/sessions')
+    const body = await res.json()
+
+    // Writable DATA_DIR in tests, so persistence is healthy — but the field
+    // must be present, otherwise the client can never warn about a failure.
+    expect(body).toHaveProperty('persistError')
+    expect(body.persistError).toBeNull()
+  })
+
+  it('reports persistError on GET /api/health', async () => {
+    const res = await app.request('/api/health')
+    const body = await res.json()
+
+    expect(body).toHaveProperty('persistError')
+    expect(body.persistError).toBeNull()
+  })
+})
+
 describe('POST /api/sessions', () => {
   it('creates a session with status defaulting to working', async () => {
     const res = await app.request('/api/sessions', {

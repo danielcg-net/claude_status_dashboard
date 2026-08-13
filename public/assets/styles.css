@@ -206,6 +206,25 @@ h1 {
   font-size: 0.78rem;
 }
 
+.persist-warning {
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: var(--toast-error-bg);
+  color: var(--toast-error-text);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  font-size: 0.9rem;
+}
+
+.persist-warning__detail {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .usage {
   border: 1px solid var(--line);
   border-radius: 8px;

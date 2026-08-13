@@ -79,6 +79,31 @@ describe('evictStaleSessions', () => {
   })
 })
 
+describe('saveSessions failure reporting', () => {
+  it('reports success so callers can clear a previous failure', async () => {
+    const store: SessionStore = new Map([['abc', makeSession({ id: 'abc' })]])
+    expect(await saveSessions(tmpDir, store)).toEqual({ ok: true })
+  })
+
+  it('reports the reason and error code when the target is unwritable', async () => {
+    const { mkdir, chmod } = await import('node:fs/promises')
+    const readOnlyDir = join(tmpDir, 'read-only')
+    await mkdir(readOnlyDir, { recursive: true })
+    await chmod(readOnlyDir, 0o500)
+
+    const result = await saveSessions(readOnlyDir, new Map([['abc', makeSession({ id: 'abc' })]]))
+
+    // Restore before asserting so a failure cannot leave an undeletable dir.
+    await chmod(readOnlyDir, 0o700)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('sessions.json')
+      expect(result.error).toContain('EACCES')
+    }
+  })
+})
+
 describe('saveSessions / loadSessions round-trip', () => {
   it('persists and reloads sessions faithfully', async () => {
     const session = makeSession({ id: 'abc', name: 'My Session', status: 'attention' })
